@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { ProgramScorecard } from "@/lib/data";
 import { inr, pct, fmtInt, deltaPct } from "@/lib/format";
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
 
 const PROGRAM_STYLE: Record<string, { dot: string; ring: string; tag: string }> = {
   FFM: { dot: "bg-rose-500",   ring: "ring-rose-200",   tag: "text-rose-700 bg-rose-50 ring-1 ring-rose-200" },
@@ -53,13 +54,21 @@ export default function ProgramScorecards({
           const tm = s.this_month;
           const pm = s.prev_month;
           return (
-            <div key={s.program} className={`surface-card surface-card-hover p-5 ring-1 ${style.ring} animate-fade-in`}>
+            <Link
+              key={s.program}
+              href={`/leads?program=${s.program}`}
+              className={`surface-card surface-card-hover p-5 ring-1 ${style.ring} animate-fade-in block group`}
+              title={`View ${s.name} leads`}
+            >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
                   <span className="font-semibold text-fg-text">{s.name}</span>
                 </div>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${style.tag}`}>{s.program}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${style.tag}`}>{s.program}</span>
+                  <ChevronRight className="w-4 h-4 text-fg-subtle opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
               <div className="space-y-2.5">
                 <MetricRow label="Applicants"      now={tm.applicants}     prev={pm.applicants}     format="int" />
@@ -73,7 +82,7 @@ export default function ProgramScorecards({
                 <MetricRow label="Marketing spend" now={tm.ads_spend + tm.influencer_spend} prev={pm.ads_spend + pm.influencer_spend} invert />
                 <MetricRow label="CAQ"             now={tm.caq}            prev={pm.caq} invert />
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

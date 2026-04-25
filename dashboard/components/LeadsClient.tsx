@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { LeadRow } from "@/lib/supabase";
 import { inr } from "@/lib/format";
 import {
@@ -85,7 +86,9 @@ function timeAgo(iso?: string | null): string {
 }
 
 export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] }) {
-  // Filters
+  const params = useSearchParams();
+
+  // Filters — seeded from URL params (so founder-dashboard drill-downs land pre-filtered)
   const [rep, setRep] = useState<string | null>(null);
   const [stages, setStages] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<Set<string>>(new Set());
@@ -95,6 +98,20 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] 
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    const p = params.get("program");
+    if (p) setPrograms(new Set(p.split(",").filter(Boolean)));
+    const s = params.get("stage");
+    if (s) setStages(new Set(s.split(",").filter(Boolean)));
+    const r = params.get("rep");
+    if (r && REPS.find(x => x.name === r)) setRep(r);
+    const v = params.get("view");
+    if (v && SAVED_VIEWS.find(x => x.id === v)) setSavedView(v);
+    const ms = params.get("minScore");
+    if (ms) { const n = parseInt(ms); if (!isNaN(n)) setMinScore(n); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     let xs = [...initialLeads];
