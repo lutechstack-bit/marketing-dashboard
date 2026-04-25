@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "crons": [
+    { "path": "/api/sync", "schedule": "30 0 * * *" }
+  ]
+}
