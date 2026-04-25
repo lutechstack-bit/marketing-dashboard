@@ -36,30 +36,54 @@ export async function fetchLeads(opts: {
   minScore?: number;
   limit?: number;
 } = {}): Promise<LeadRow[]> {
-  // Query leads table directly (much faster than lead_view which runs per-row subqueries)
-  let q = supabase
-    .from("leads")
-    .select("id,email,phone,name,program,source_campaign_id,source_campaign_name,source_utm_source,funnel_stage,score,score_breakdown,first_seen,last_activity")
-    .order("score", { ascending: false })
-    .order("last_activity", { ascending: false, nullsFirst: false })
-    .limit(opts.limit || 500);
+  // Query leads table directly (much faster than lead_view which runs per-row subqueries).
+  // Supabase default per-request limit is 1000 — paginate via .range() to bypass.
+  const targetLimit = opts.limit || 500;
+  const leads: LeadRow[] = [];
+  const PAGE = 1000;
+  let offset = 0;
+  while (leads.length < targetLimit) {
+    const upper = Math.min(offset + PAGE - 1, offset + (targetLimit - leads.length) - 1);
+    let q = supabase
+      .from("leads")
+      .select("id,email,phone,name,program,source_campaign_id,source_campaign_name,source_utm_source,funnel_stage,score,score_breakdown,first_seen,last_activity")
+      .order("score", { ascending: false })
+      .order("last_activity", { ascending: false, nullsFirst: false })
+      .range(offset, upper);
 
-  if (opts.programs && opts.programs.length) q = q.in("program", opts.programs);
-  if (opts.stages && opts.stages.length)     q = q.in("funnel_stage", opts.stages);
-  if (opts.minScore !== undefined)           q = q.gte("score", opts.minScore);
+    if (opts.programs && opts.programs.length) q = q.in("program", opts.programs);
+    if (opts.stages && opts.stages.length)     q = q.in("funnel_stage", opts.stages);
+    if (opts.minScore !== undefined)           q = q.gte("score", opts.minScore);
 
-  const { data, error } = await q;
-  if (error) throw error;
-  const leads = (data as LeadRow[]) || [];
+    const { data, error } = await q;
+    if (error) throw error;
+    const page = (data as LeadRow[]) || [];
+    leads.push(...page);
+    if (page.length < PAGE) break;  // no more
+    offset += PAGE;
+  }
 
-  // Batch-fetch payment summaries for visible leads
+  // Batch-fetch payment summaries for visible leads — chunked to avoid 1000-row limit
   if (leads.length) {
     const ids = leads.map(l => l.id);
-    const { data: pays } = await supabase
-      .from("payments")
-      .select("lead_id,amount_inr,paid_at,status")
-      .in("lead_id", ids)
-      .eq("status", "captured");
+    const pays: any[] = [];
+    const CHUNK = 200;  // smaller chunks for IN-clause efficiency
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const idChunk = ids.slice(i, i + CHUNK);
+      let off2 = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("payments")
+          .select("lead_id,amount_inr,paid_at,status")
+          .in("lead_id", idChunk)
+          .eq("status", "captured")
+          .range(off2, off2 + 999);
+        if (error) break;
+        pays.push(...(data || []));
+        if (!data || data.length < 1000) break;
+        off2 += 1000;
+      }
+    }
     const byLead: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
     for (const p of (pays || [])) {
       const k = (p as any).lead_id;
