@@ -3,10 +3,10 @@ import { inr, pct, fmtInt, deltaPct } from "@/lib/format";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 const PROGRAM_STYLE: Record<string, { dot: string; ring: string; tag: string }> = {
-  FFM: { dot: "bg-rose-500", ring: "ring-rose-500/30", tag: "text-rose-400 bg-rose-500/10" },
-  FW:  { dot: "bg-cyan-500", ring: "ring-cyan-500/30", tag: "text-cyan-400 bg-cyan-500/10" },
-  FC:  { dot: "bg-lime-500", ring: "ring-lime-500/30", tag: "text-lime-400 bg-lime-500/10" },
-  FAI: { dot: "bg-amber-500",ring: "ring-amber-500/30",tag: "text-amber-400 bg-amber-500/10" },
+  FFM: { dot: "bg-rose-500",   ring: "ring-rose-200",   tag: "text-rose-700 bg-rose-50 ring-1 ring-rose-200" },
+  FW:  { dot: "bg-cyan-500",   ring: "ring-cyan-200",   tag: "text-cyan-700 bg-cyan-50 ring-1 ring-cyan-200" },
+  FC:  { dot: "bg-lime-500",   ring: "ring-lime-200",   tag: "text-lime-700 bg-lime-50 ring-1 ring-lime-200" },
+  FAI: { dot: "bg-amber-500",  ring: "ring-amber-200",  tag: "text-amber-700 bg-amber-50 ring-1 ring-amber-200" },
 };
 
 function MetricRow({ label, now, prev, format = "inr", invert = false }: {
@@ -22,10 +22,10 @@ function MetricRow({ label, now, prev, format = "inr", invert = false }: {
     <div className="flex items-baseline justify-between">
       <span className="text-xs text-fg-muted">{label}</span>
       <span className="flex items-baseline gap-1.5">
-        <span className="text-sm font-semibold tabular-nums">{now > 0 ? fmt(now) : "—"}</span>
+        <span className="text-sm font-semibold tabular-nums text-fg-text">{now > 0 ? fmt(now) : "—"}</span>
         {showDelta && (
           <span className={`inline-flex items-center text-[10px] font-medium ${
-            positive ? "text-emerald-500" : d === 0 ? "text-fg-muted/60" : "text-rose-500"
+            positive ? "text-emerald-600" : d === 0 ? "text-fg-subtle" : "text-rose-600"
           }`}>
             {d > 0 ? <ArrowUpRight className="w-2.5 h-2.5" /> : d < 0 ? <ArrowDownRight className="w-2.5 h-2.5" /> : null}
             {Math.abs(d).toFixed(0)}%
@@ -44,7 +44,7 @@ export default function ProgramScorecards({
   return (
     <div className="mb-8">
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-lg font-semibold">Per-program scorecards</h2>
+        <h2 className="text-lg font-semibold text-fg-text">Per-program scorecards</h2>
         <span className="text-xs text-fg-muted">{monthLabel} · vs previous month</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -53,13 +53,13 @@ export default function ProgramScorecards({
           const tm = s.this_month;
           const pm = s.prev_month;
           return (
-            <div key={s.program} className={`glow-card rounded-xl p-5 ring-1 ${style.ring} animate-fade-in`}>
+            <div key={s.program} className={`surface-card surface-card-hover p-5 ring-1 ${style.ring} animate-fade-in`}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
-                  <span className="font-semibold">{s.name}</span>
+                  <span className="font-semibold text-fg-text">{s.name}</span>
                 </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded ${style.tag}`}>{s.program}</span>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${style.tag}`}>{s.program}</span>
               </div>
               <div className="space-y-2.5">
                 <MetricRow label="Applicants"      now={tm.applicants}     prev={pm.applicants}     format="int" />

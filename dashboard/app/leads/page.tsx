@@ -6,7 +6,6 @@ import { Flame, TrendingUp, Users } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPage() {
-  // ONE round trip — fetch top 2000 leads once, all filtering is client-side.
   const [stats, leads] = await Promise.all([
     fetchLeadStats(),
     fetchLeads({ limit: 2000 }),
@@ -16,17 +15,17 @@ export default async function LeadsPage() {
     <>
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
-        <div className="mb-6 flex items-end justify-between">
+        <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Lead Intelligence</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-fg-text">Lead Intelligence</h1>
             <p className="text-sm text-fg-muted mt-1">
-              CRM-style lead manager · {stats.total.toLocaleString("en-IN")} scored leads · client-side filtering
+              {stats.total.toLocaleString("en-IN")} scored leads · click any name to open the full timeline
             </p>
           </div>
-          <div className="hidden md:flex gap-3">
-            <KpiPill label="Rescue zone" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
-            <KpiPill label="Hot 75+"     value={stats.hot_75plus} icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
-            <KpiPill label="Total"       value={stats.total}      icon={<Users className="w-3.5 h-3.5" />} accent="cyan" />
+          <div className="flex gap-2.5">
+            <KpiPill label="Rescue" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
+            <KpiPill label="Hot 75+" value={stats.hot_75plus} icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
+            <KpiPill label="Total"   value={stats.total}      icon={<Users className="w-3.5 h-3.5" />} accent="slate" />
           </div>
         </div>
 
@@ -36,16 +35,16 @@ export default async function LeadsPage() {
   );
 }
 
-function KpiPill({ label, value, icon, accent }: { label: string; value: number; icon: React.ReactNode; accent: "amber" | "emerald" | "cyan" }) {
+function KpiPill({ label, value, icon, accent }: { label: string; value: number; icon: React.ReactNode; accent: "amber" | "emerald" | "slate" }) {
   const colors = {
-    amber:   "border-amber-500/30 text-amber-500",
-    emerald: "border-emerald-500/30 text-emerald-500",
-    cyan:    "border-cyan-500/30 text-cyan-500",
+    amber:   "border-amber-300 text-amber-800 bg-amber-50",
+    emerald: "border-emerald-300 text-emerald-800 bg-emerald-50",
+    slate:   "border-slate-200 text-slate-700 bg-slate-50",
   };
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${colors[accent]} bg-fg-card/30`}>
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${colors[accent]}`}>
       {icon}
-      <span className="text-xs uppercase tracking-wider opacity-80">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider opacity-80 font-medium">{label}</span>
       <span className="text-base font-bold tabular-nums">{value.toLocaleString("en-IN")}</span>
     </div>
   );

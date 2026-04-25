@@ -1,6 +1,6 @@
 "use client";
 
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import type { ProgramRollup, AcquisitionRow } from "@/lib/data";
 import { inr } from "@/lib/format";
 
@@ -9,7 +9,6 @@ const COLORS = { FFM: "#EF4444", FW: "#06B6D4", FC: "#84CC16", FAI: "#F59E0B" };
 export default function CacChart({
   spendTrend, acquisitions,
 }: { spendTrend: ProgramRollup[]; acquisitions: AcquisitionRow[] }) {
-  // Build CAC = spend / acquired_students for each (program × month)
   const acqMap = new Map(acquisitions.map(a => [a.ym, a]));
   const data = spendTrend.slice(-12).map(s => {
     const acq = acqMap.get(s.ymKey);
@@ -23,11 +22,11 @@ export default function CacChart({
   });
 
   return (
-    <div className="glow-card rounded-xl p-6 animate-fade-in">
+    <div className="surface-card p-6 animate-fade-in">
       <div className="flex items-baseline justify-between mb-4">
         <div>
-          <h2 className="text-lg font-semibold">CAC per paid student by program</h2>
-          <p className="text-xs text-fg-muted mt-0.5">Spend divided by paid students per month · last 12 months</p>
+          <h2 className="text-lg font-semibold text-fg-text">CAC per paid student</h2>
+          <p className="text-xs text-fg-muted mt-0.5">Spend ÷ paid students per month · last 12 months</p>
         </div>
         <div className="flex gap-3 text-xs">
           {Object.entries(COLORS).map(([k, c]) => (
@@ -38,18 +37,18 @@ export default function CacChart({
           ))}
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: "#71717A", fontSize: 11 }} stroke="#27272A" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+          <XAxis dataKey="label" tick={{ fill: "#64748B", fontSize: 11 }} stroke="#E5E7EB" />
           <YAxis
-            tick={{ fill: "#71717A", fontSize: 11 }}
-            stroke="#27272A"
+            tick={{ fill: "#64748B", fontSize: 11 }}
+            stroke="#E5E7EB"
             tickFormatter={(v) => inr(v, { compact: true })}
           />
           <Tooltip
-            contentStyle={{ background: "#141416", border: "1px solid #27272A", borderRadius: 8, fontSize: 12 }}
-            labelStyle={{ color: "#FAFAFA", fontWeight: 600 }}
+            contentStyle={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 12, boxShadow: "0 4px 12px -4px rgb(15 23 42 / 0.15)" }}
+            labelStyle={{ color: "#0F172A", fontWeight: 600 }}
             formatter={(v: number, name) => [v ? inr(v) : "—", name]}
           />
           {(["FFM", "FW", "FC", "FAI"] as const).map((k) => (
