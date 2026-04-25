@@ -1,89 +1,52 @@
-import { fetchLeads, fetchLeadStats } from "@/lib/supabase";
+import { fetchLeadStats, fetchLeads } from "@/lib/supabase";
 import Header from "@/components/Header";
-import LeadsFilters from "@/components/LeadsFilters";
-import LeadsTable from "@/components/LeadsTable";
-import { Flame, Users, TrendingUp } from "lucide-react";
+import LeadsClient from "@/components/LeadsClient";
+import { Flame, TrendingUp, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-const REP_PROGRAMS: Record<string, string[]> = {
-  Pranaush: ["FFM", "FW"],
-  Sashank:  ["FC", "BFP"],
-  Wilson:   ["VE", "L3C"],
-};
-
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
-  const sp = await searchParams;
-  const rep = sp.rep;
-  const explicitPrograms = (sp.program || "").split(",").filter(Boolean);
-  const stages           = (sp.stage || "").split(",").filter(Boolean);
-  const minScore         = sp.minScore ? parseInt(sp.minScore) : undefined;
-
-  // Rep filter narrows program list
-  const repPrograms = rep ? REP_PROGRAMS[rep] || [] : [];
-  const programs = explicitPrograms.length ? explicitPrograms : repPrograms;
-
+export default async function LeadsPage() {
+  // ONE round trip — fetch top 2000 leads once, all filtering is client-side.
   const [stats, leads] = await Promise.all([
     fetchLeadStats(),
-    fetchLeads({
-      programs: programs.length ? programs : undefined,
-      stages: stages.length ? stages : undefined,
-      minScore,
-      limit: 500,
-    }),
+    fetchLeads({ limit: 2000 }),
   ]);
-
-  const rescueZone = stats.by_stage["accepted"] || 0;
 
   return (
     <>
       <Header />
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Page title */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">Lead Intelligence</h1>
-          <p className="text-sm text-fg-muted mt-1">
-            {stats.total.toLocaleString("en-IN")} leads scored from {stats.total ? Object.keys(stats.by_program).length : 0} programs
-            · {rescueZone} in rescue zone (paid app fee, awaiting confirmation)
-          </p>
-        </div>
-
-        {/* Top KPI strip */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="glow-card rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs uppercase tracking-wider text-fg-muted">Rescue zone</span>
-              <Flame className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-3xl font-bold">{rescueZone}</div>
-            <div className="text-xs text-fg-muted mt-1">Paid app fee, no confirmation yet — call FIRST</div>
+      <main className="max-w-[1500px] mx-auto px-6 py-6">
+        <div className="mb-6 flex items-end justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Lead Intelligence</h1>
+            <p className="text-sm text-fg-muted mt-1">
+              CRM-style lead manager · {stats.total.toLocaleString("en-IN")} scored leads · client-side filtering
+            </p>
           </div>
-          <div className="glow-card rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs uppercase tracking-wider text-fg-muted">Hot (score 75+)</span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-3xl font-bold">{stats.hot_75plus}</div>
-            <div className="text-xs text-fg-muted mt-1">Top tier across all programs</div>
-          </div>
-          <div className="glow-card rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs uppercase tracking-wider text-fg-muted">Total leads</span>
-              <Users className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-3xl font-bold">{stats.total.toLocaleString("en-IN")}</div>
-            <div className="text-xs text-fg-muted mt-1">Across {Object.keys(stats.by_program).length} active programs</div>
+          <div className="hidden md:flex gap-3">
+            <KpiPill label="Rescue zone" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
+            <KpiPill label="Hot 75+"     value={stats.hot_75plus} icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
+            <KpiPill label="Total"       value={stats.total}      icon={<Users className="w-3.5 h-3.5" />} accent="cyan" />
           </div>
         </div>
 
-        <LeadsFilters stats={stats} />
-        <LeadsTable leads={leads} />
-
-        <div className="text-xs text-fg-muted text-center mt-8 mb-4">
-          Lead data from Tally form submissions + Razorpay payments. Updates daily via cron.
-          AI-generated lead summaries coming next.
-        </div>
+        <LeadsClient initialLeads={leads} />
       </main>
     </>
+  );
+}
+
+function KpiPill({ label, value, icon, accent }: { label: string; value: number; icon: React.ReactNode; accent: "amber" | "emerald" | "cyan" }) {
+  const colors = {
+    amber:   "border-amber-500/30 text-amber-500",
+    emerald: "border-emerald-500/30 text-emerald-500",
+    cyan:    "border-cyan-500/30 text-cyan-500",
+  };
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${colors[accent]} bg-fg-card/30`}>
+      {icon}
+      <span className="text-xs uppercase tracking-wider opacity-80">{label}</span>
+      <span className="text-base font-bold tabular-nums">{value.toLocaleString("en-IN")}</span>
+    </div>
   );
 }

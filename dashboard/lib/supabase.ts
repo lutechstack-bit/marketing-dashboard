@@ -36,9 +36,10 @@ export async function fetchLeads(opts: {
   minScore?: number;
   limit?: number;
 } = {}): Promise<LeadRow[]> {
+  // Query leads table directly (much faster than lead_view which runs per-row subqueries)
   let q = supabase
-    .from("lead_view")
-    .select("*")
+    .from("leads")
+    .select("id,email,phone,name,program,source_campaign_id,source_campaign_name,source_utm_source,funnel_stage,score,score_breakdown,first_seen,last_activity")
     .order("score", { ascending: false })
     .order("last_activity", { ascending: false, nullsFirst: false })
     .limit(opts.limit || 500);
@@ -49,7 +50,37 @@ export async function fetchLeads(opts: {
 
   const { data, error } = await q;
   if (error) throw error;
-  return (data as LeadRow[]) || [];
+  const leads = (data as LeadRow[]) || [];
+
+  // Batch-fetch payment summaries for visible leads
+  if (leads.length) {
+    const ids = leads.map(l => l.id);
+    const { data: pays } = await supabase
+      .from("payments")
+      .select("lead_id,amount_inr,paid_at,status")
+      .in("lead_id", ids)
+      .eq("status", "captured");
+    const byLead: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
+    for (const p of (pays || [])) {
+      const k = (p as any).lead_id;
+      if (!byLead[k]) byLead[k] = { count: 0 };
+      byLead[k].count++;
+      if (!byLead[k].last_at || (p as any).paid_at > byLead[k].last_at!) {
+        byLead[k].last_at = (p as any).paid_at;
+        byLead[k].last_amt = (p as any).amount_inr;
+      }
+    }
+    for (const l of leads) {
+      const s = byLead[l.id];
+      if (s) {
+        l.captured_payment_count = s.count;
+        l.last_payment_amount    = s.last_amt;
+        l.last_payment_at        = s.last_at;
+      }
+    }
+  }
+
+  return leads;
 }
 
 export async function getLeadDetail(leadId: string) {
