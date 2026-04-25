@@ -30,14 +30,50 @@ export type LeadRow = {
   captured_payment_count?: number;
 };
 
+export type FormSubmissionRow = {
+  id: string;
+  lead_id: string | null;
+  form_id: string;
+  form_name: string | null;
+  program: string | null;
+  is_completed: boolean;
+  submitted_at: string;
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+  responses: Record<string, any> | null;
+  created_at: string;
+};
+
+export type PaymentRow = {
+  id: string;
+  lead_id: string | null;
+  account: string;
+  program: string | null;
+  payment_type: string | null;
+  amount_inr: number;
+  status: string | null;
+  email: string | null;
+  phone: string | null;
+  paid_at: string;
+  created_at: string;
+};
+
+export type LeadActivityRow = {
+  id: string;
+  lead_id: string;
+  rep_name: string | null;
+  action: string;
+  notes: string | null;
+  created_at: string;
+};
+
 export async function fetchLeads(opts: {
   programs?: string[];
   stages?: string[];
   minScore?: number;
   limit?: number;
 } = {}): Promise<LeadRow[]> {
-  // Query leads table directly (much faster than lead_view which runs per-row subqueries).
-  // Supabase default per-request limit is 1000 — paginate via .range() to bypass.
   const targetLimit = opts.limit || 500;
   const leads: LeadRow[] = [];
   const PAGE = 1000;
@@ -59,15 +95,15 @@ export async function fetchLeads(opts: {
     if (error) throw error;
     const page = (data as LeadRow[]) || [];
     leads.push(...page);
-    if (page.length < PAGE) break;  // no more
+    if (page.length < PAGE) break;
     offset += PAGE;
   }
 
-  // Batch-fetch payment summaries for visible leads — chunked to avoid 1000-row limit
+  // Batch payment summaries
   if (leads.length) {
     const ids = leads.map(l => l.id);
     const pays: any[] = [];
-    const CHUNK = 200;  // smaller chunks for IN-clause efficiency
+    const CHUNK = 200;
     for (let i = 0; i < ids.length; i += CHUNK) {
       const idChunk = ids.slice(i, i + CHUNK);
       let off2 = 0;
@@ -109,21 +145,20 @@ export async function fetchLeads(opts: {
 
 export async function getLeadDetail(leadId: string) {
   const [lead, subs, pays, acts] = await Promise.all([
-    supabase.from("lead_view").select("*").eq("id", leadId).single(),
+    supabase.from("leads").select("*").eq("id", leadId).maybeSingle(),
     supabase.from("form_submissions").select("*").eq("lead_id", leadId).order("submitted_at", { ascending: false }),
     supabase.from("payments").select("*").eq("lead_id", leadId).order("paid_at", { ascending: false }),
     supabase.from("lead_activities").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }),
   ]);
   return {
-    lead: lead.data as LeadRow,
-    submissions: subs.data || [],
-    payments: pays.data || [],
-    activities: acts.data || [],
+    lead: (lead.data as LeadRow) || null,
+    submissions: (subs.data as FormSubmissionRow[]) || [],
+    payments: (pays.data as PaymentRow[]) || [],
+    activities: (acts.data as LeadActivityRow[]) || [],
   };
 }
 
 export async function fetchLeadStats() {
-  // Use count-only queries (head: true) to bypass Supabase's default 1000-row fetch limit.
   const stages = ["form_partial","form_submitted","app_fee_paid","accepted","confirmed","balance_paid","lost"];
   const programs = ["FFM","FW","FC","FAI"];
 
