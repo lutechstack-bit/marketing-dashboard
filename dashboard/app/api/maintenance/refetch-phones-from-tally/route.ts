@@ -101,6 +101,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const formIdParam = url.searchParams.get("form") || "ALL";
   const maxPages = Math.min(parseInt(url.searchParams.get("pages") || "10"), 50);
+  const startPage = Math.max(1, parseInt(url.searchParams.get("startPage") || "1"));
 
   const formIds = formIdParam === "ALL"
     ? Object.keys(TALLY_FORM_TO_PROGRAM)
@@ -122,7 +123,8 @@ export async function GET(req: Request) {
     const matched: { email: string; phone: string; lead_id: string }[] = [];
 
     try {
-      for (let page = 1; page <= maxPages; page++) {
+      for (let pageOffset = 0; pageOffset < maxPages; pageOffset++) {
+        const page = startPage + pageOffset;
         const data = await tallyFetch(`https://api.tally.so/forms/${formId}/submissions?page=${page}&limit=50`);
         const submissions = data.submissions || data.items || data.data || [];
         const questions = data.questions || [];
@@ -167,6 +169,7 @@ export async function GET(req: Request) {
         form: formId,
         program: programInfo.program,
         name: programInfo.name,
+        startPage, pages_scanned: maxPages,
         scanned, updated,
         sample_matched: matched,
       });
