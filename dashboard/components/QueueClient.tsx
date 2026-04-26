@@ -15,6 +15,7 @@ import {
   type Family, type BucketId,
 } from "@/lib/products";
 import StatusDropdown from "./StatusDropdown";
+import ColumnSettings, { COLUMN_DEFS, type ColumnId, defaultVisible, loadVisible } from "./ColumnSettings";
 
 // ----------------------------------------------------------------
 // Helpers
@@ -75,6 +76,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
   const [bucket, setBucket] = useState<BucketId>("abandoned");
   const [mounted, setMounted] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(defaultVisible());
 
   // Auto-refresh every 30s while tab visible
   useEffect(() => {
@@ -95,6 +97,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     if (f === "forge" || f === "live") setFamily(f);
     if (p && PRODUCT_BY_CODE[p]) setProduct(p);
     if (b && BUCKETS[b]) setBucket(b);
+    setVisibleCols(loadVisible());
     setMounted(true);
   }, []);
 
@@ -209,18 +212,21 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
         />
       )}
 
-      {/* Bucket toggles */}
-      <BucketTabs current={bucket} counts={{
-        abandoned:    bucketed.abandoned.length,
-        need_to_book: bucketed.need_to_book.length,
-        partials:     bucketed.partials.length,
-      }} onChange={setBucketP} />
+      {/* Bucket toggles + column settings */}
+      <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+        <BucketTabs current={bucket} counts={{
+          abandoned:    bucketed.abandoned.length,
+          need_to_book: bucketed.need_to_book.length,
+          partials:     bucketed.partials.length,
+        }} onChange={setBucketP} />
+        {mounted && <ColumnSettings visible={visibleCols} onChange={setVisibleCols} />}
+      </div>
 
       {/* Active bucket description */}
       <p className="text-xs text-fg-muted mt-3 mb-4">{BUCKETS[bucket].description}</p>
 
       {/* List */}
-      <LeadsList leads={visible} bucketId={bucket} family={family} />
+      <LeadsList leads={visible} bucketId={bucket} family={family} visibleCols={visibleCols} />
     </div>
   );
 }
@@ -360,7 +366,7 @@ function BucketTabs({ current, counts, onChange }: {
 // ----------------------------------------------------------------
 // Leads list (table format)
 // ----------------------------------------------------------------
-function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: BucketId; family: Family }) {
+function LeadsList({ leads, bucketId, family, visibleCols }: { leads: LeadRow[]; bucketId: BucketId; family: Family; visibleCols: Set<ColumnId> }) {
   if (leads.length === 0) {
     const isLiveEmpty = family === "live";
     return (
@@ -376,6 +382,8 @@ function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: Bu
     );
   }
 
+  const show = (c: ColumnId) => visibleCols.has(c);
+
   return (
     <div className="surface-card overflow-hidden mt-2">
       <div className="overflow-x-auto">
@@ -385,17 +393,20 @@ function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: Bu
               <th className="py-3 pl-4 pr-2 font-medium w-12">#</th>
               <th className="py-3 px-2 font-medium w-14">Score</th>
               <th className="py-3 px-2 font-medium">Name</th>
-              <th className="py-3 px-2 font-medium">Phone</th>
-              <th className="py-3 px-2 font-medium">Submitted</th>
-              <th className="py-3 px-2 font-medium">Why hot</th>
-              <th className="py-3 px-2 font-medium w-32">Incentive</th>
+              {show("phone")         && <th className="py-3 px-2 font-medium">Phone</th>}
+              {show("email")         && <th className="py-3 px-2 font-medium">Email</th>}
+              {show("submitted")     && <th className="py-3 px-2 font-medium">Submitted</th>}
+              {show("why_hot")       && <th className="py-3 px-2 font-medium">Why hot</th>}
+              {show("source")        && <th className="py-3 px-2 font-medium">Source</th>}
+              {show("last_activity") && <th className="py-3 px-2 font-medium">Last activity</th>}
+              {show("incentive")     && <th className="py-3 px-2 font-medium w-32">Incentive</th>}
               <th className="py-3 px-2 font-medium w-44">Status</th>
               <th className="py-3 pr-4 pl-2 font-medium w-44">Actions</th>
             </tr>
           </thead>
           <tbody>
             {leads.slice(0, 200).map((l, i) => (
-              <LeadRowView key={l.id} lead={l} rank={i + 1} bucketId={bucketId} />
+              <LeadRowView key={l.id} lead={l} rank={i + 1} bucketId={bucketId} visibleCols={visibleCols} />
             ))}
           </tbody>
         </table>
@@ -407,10 +418,12 @@ function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: Bu
   );
 }
 
-function LeadRowView({ lead, rank, bucketId }: { lead: LeadRow; rank: number; bucketId: BucketId }) {
+function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; rank: number; bucketId: BucketId; visibleCols: Set<ColumnId> }) {
   const why = whyHotReason(lead);
   const submittedRecent = hoursSince(lead.first_seen) <= 1;
   const incentive = incentiveFor(lead.score, bucketId);
+  const show = (c: ColumnId) => visibleCols.has(c);
+
   return (
     <tr className={`border-b border-fg-border/70 row-hover align-top ${submittedRecent ? "bg-yellow-50/40" : ""}`}>
       <td className="py-3 pl-4 pr-2 text-xs text-fg-subtle tabular-nums">{rank}</td>
@@ -422,30 +435,55 @@ function LeadRowView({ lead, rank, bucketId }: { lead: LeadRow; rank: number; bu
           </Link>
           {submittedRecent && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-yellow-500 text-white shrink-0">NEW</span>}
         </div>
-        {lead.email && (
+        {/* Show email under name only when the email column itself isn't visible */}
+        {!show("email") && lead.email && (
           <div className="text-xs text-fg-muted truncate" title={lead.email}>{lead.email}</div>
         )}
       </td>
-      <td className="py-3 px-2 tabular-nums whitespace-nowrap">
-        {lead.phone ? (
-          <a href={`tel:${lead.phone}`} className="text-fg-text hover:text-emerald-700 hover:underline">+{lead.phone}</a>
-        ) : <span className="text-fg-subtle italic">missing</span>}
-      </td>
-      <td className="py-3 px-2 whitespace-nowrap text-xs text-fg-muted">
-        <div className={submittedRecent ? "text-yellow-700 font-semibold" : ""}>{fmtSubmitted(lead.first_seen)}</div>
-        <div className="text-fg-subtle text-[10px]">{fmtAgo(lead.first_seen)} ago</div>
-      </td>
-      <td className="py-3 px-2 max-w-[280px]">
-        <p className="text-xs text-fg-text/85 leading-snug line-clamp-2">{why}</p>
-      </td>
-      <td className="py-3 px-2 whitespace-nowrap">
-        {incentive ? (
-          <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">
-            <IndianRupee className="w-3 h-3" />
-            <span className="text-xs font-bold tabular-nums">{incentive.amount.toLocaleString("en-IN")}</span>
-          </div>
-        ) : <span className="text-fg-subtle text-xs">—</span>}
-      </td>
+      {show("phone") && (
+        <td className="py-3 px-2 tabular-nums whitespace-nowrap">
+          {lead.phone ? (
+            <a href={`tel:${lead.phone}`} className="text-fg-text hover:text-emerald-700 hover:underline">+{lead.phone}</a>
+          ) : <span className="text-fg-subtle italic">missing</span>}
+        </td>
+      )}
+      {show("email") && (
+        <td className="py-3 px-2 max-w-[200px]">
+          {lead.email ? (
+            <a href={`mailto:${lead.email}`} className="text-fg-text hover:text-cyan-700 hover:underline truncate inline-block max-w-full" title={lead.email}>{lead.email}</a>
+          ) : <span className="text-fg-subtle italic">—</span>}
+        </td>
+      )}
+      {show("submitted") && (
+        <td className="py-3 px-2 whitespace-nowrap text-xs text-fg-muted">
+          <div className={submittedRecent ? "text-yellow-700 font-semibold" : ""}>{fmtSubmitted(lead.first_seen)}</div>
+          <div className="text-fg-subtle text-[10px]">{fmtAgo(lead.first_seen)} ago</div>
+        </td>
+      )}
+      {show("why_hot") && (
+        <td className="py-3 px-2 max-w-[280px]">
+          <p className="text-xs text-fg-text/85 leading-snug line-clamp-2">{why}</p>
+        </td>
+      )}
+      {show("source") && (
+        <td className="py-3 px-2 max-w-[160px]">
+          <div className="text-xs text-fg-text/85 truncate" title={lead.source_campaign_name || "—"}>{lead.source_campaign_name || "—"}</div>
+          {lead.source_utm_source && <div className="text-[10px] text-fg-subtle truncate">utm: {lead.source_utm_source}</div>}
+        </td>
+      )}
+      {show("last_activity") && (
+        <td className="py-3 px-2 whitespace-nowrap text-xs text-fg-muted">{fmtAgo(lead.last_activity)} ago</td>
+      )}
+      {show("incentive") && (
+        <td className="py-3 px-2 whitespace-nowrap">
+          {incentive ? (
+            <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200" title={`Payout ${incentive.label}`}>
+              <IndianRupee className="w-3 h-3" />
+              <span className="text-xs font-bold tabular-nums">{incentive.amount.toLocaleString("en-IN")}</span>
+            </div>
+          ) : <span className="text-fg-subtle text-xs">—</span>}
+        </td>
+      )}
       <td className="py-3 px-2">
         <StatusDropdown leadId={lead.id} initialStatus={lead.last_action} compact />
       </td>
