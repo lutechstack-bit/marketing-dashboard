@@ -52,13 +52,16 @@ async function calGet(path: string): Promise<any> {
 }
 
 /**
- * Cached bookings fetch — 5-min TTL. Use this from server components.
- * First page load: ~10s. Subsequent loads: <100ms (cache hit).
+ * Cached bookings fetch — 30-min TTL. Use this from server components.
+ * First page load after expiry: ~10s. Subsequent loads: <100ms (cache hit).
+ * Bumped from 5 → 30 min so cold-cache hits are 6× less frequent (founder feedback:
+ * lead detail page felt slow). Bookings rarely change minute-to-minute, so 30 min
+ * is plenty fresh for sales context.
  */
 export const fetchBookingsCached = unstable_cache(
   async (daysBack: number = 45) => fetchBookings(daysBack),
   ["calendly-bookings"],
-  { revalidate: 300, tags: ["calendly"] },
+  { revalidate: 1800, tags: ["calendly"] },
 );
 
 /**

@@ -99,11 +99,12 @@ export async function fetchLeads(opts: {
     offset += PAGE;
   }
 
-  // Batch payment summaries + latest status (lead_activities) — both chunked
+  // Batch payment summaries + latest status + REAL submitted_at per lead
   if (leads.length) {
     const ids = leads.map(l => l.id);
     const pays: any[] = [];
     const acts: any[] = [];
+    const subs: any[] = [];
     const CHUNK = 200;
     for (let i = 0; i < ids.length; i += CHUNK) {
       const idChunk = ids.slice(i, i + CHUNK);
@@ -121,7 +122,7 @@ export async function fetchLeads(opts: {
         if (!data || data.length < 1000) break;
         off2 += 1000;
       }
-      // activities — keep all, we'll pick latest non-note per lead client-side
+      // activities — latest non-note per lead
       let off3 = 0;
       while (true) {
         const { data, error } = await supabase
@@ -136,6 +137,23 @@ export async function fetchLeads(opts: {
         if (!data || data.length < 1000) break;
         off3 += 1000;
       }
+      // form_submissions — earliest submitted_at per lead (REAL submission time)
+      // Bug fix: previously we used leads.first_seen which equals the Python-script
+      // bulk-insert time, making thousands of leads share the same timestamp.
+      // submitted_at comes from Tally itself — accurate per submission.
+      let off4 = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("form_submissions")
+          .select("lead_id,submitted_at")
+          .in("lead_id", idChunk)
+          .order("submitted_at", { ascending: true })
+          .range(off4, off4 + 999);
+        if (error) break;
+        subs.push(...(data || []));
+        if (!data || data.length < 1000) break;
+        off4 += 1000;
+      }
     }
     // Index payments
     const byLeadPay: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
@@ -148,11 +166,17 @@ export async function fetchLeads(opts: {
         byLeadPay[k].last_amt = p.amount_inr;
       }
     }
-    // Index latest activity per lead (acts already sorted desc by created_at)
     const byLeadAct: Record<string, { action: string; rep_name: string | null; created_at: string }> = {};
     for (const a of acts) {
       if (!byLeadAct[a.lead_id]) {
         byLeadAct[a.lead_id] = { action: a.action, rep_name: a.rep_name, created_at: a.created_at };
+      }
+    }
+    // Earliest submitted_at per lead (subs already sorted asc, so first wins)
+    const earliestSubByLead: Record<string, string> = {};
+    for (const s of subs) {
+      if (s.lead_id && !earliestSubByLead[s.lead_id]) {
+        earliestSubByLead[s.lead_id] = s.submitted_at;
       }
     }
     for (const l of leads) {
@@ -167,6 +191,10 @@ export async function fetchLeads(opts: {
         l.last_action       = a.action;
         l.last_contacted_by = a.rep_name;
         l.last_contacted_at = a.created_at;
+      }
+      // Override first_seen with the REAL submission time when available
+      if (earliestSubByLead[l.id]) {
+        l.first_seen = earliestSubByLead[l.id];
       }
     }
   }

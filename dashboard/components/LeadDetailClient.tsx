@@ -11,6 +11,7 @@ import { inr, fmtDate } from "@/lib/format";
 import { suggestTalkingPoints, whyHotReason } from "@/lib/insights";
 import type { CalendlyBooking } from "@/lib/calendly";
 import type { AiWhyHot } from "@/lib/ai-insights";
+import { useEffect } from "react";
 import StatusDropdown from "./StatusDropdown";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
@@ -38,10 +39,9 @@ type Props = {
     activities: LeadActivityRow[];
   };
   calendlyBookings?: CalendlyBooking[];
-  aiBrief?: AiWhyHot | null;
 };
 
-export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrief }: Props) {
+export default function LeadDetailClient({ detail, calendlyBookings = [] }: Props) {
   const router = useRouter();
   const [activities, setActivities] = useState<LeadActivityRow[]>(detail.activities);
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +50,20 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
     if (typeof window === "undefined") return "Pranaush";
     return localStorage.getItem("levelup-current-rep") || "Pranaush";
   });
-  const [responsesOpen, setResponsesOpen] = useState(false);
+  const [responsesOpen, setResponsesOpen] = useState(true); // OPEN by default per founder feedback
+
+  // Deferred AI brief — fetches client-side after page render so page loads fast
+  const [aiBrief, setAiBrief] = useState<AiWhyHot | null>(null);
+  const [aiLoading, setAiLoading] = useState(true);
+  useEffect(() => {
+    let canceled = false;
+    setAiLoading(true);
+    fetch(`/api/ai/why-hot?lead_id=${detail.lead.id}`)
+      .then(r => r.json())
+      .then(j => { if (!canceled) { setAiBrief(j.brief || null); setAiLoading(false); } })
+      .catch(() => { if (!canceled) setAiLoading(false); });
+    return () => { canceled = true; };
+  }, [detail.lead.id]);
 
   const lead = detail.lead;
   const stage = STAGE_LABEL[lead.funnel_stage || ""] || STAGE_LABEL.form_partial;
@@ -181,14 +194,20 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
         </div>
       </div>
 
-      {/* AI BRIEF (if available) */}
-      {aiBrief && (
-        <div className="surface-card p-5 bg-gradient-to-br from-indigo-50/40 via-white to-cyan-50/30 border-l-4 border-l-indigo-500">
-          <div className="flex items-center gap-2 mb-3 text-fg-text">
-            <Sparkles className="w-4 h-4 text-indigo-600" />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">AI brief · GPT-4o-mini</h2>
-            <span className="text-[10px] text-fg-subtle ml-auto">cached</span>
+      {/* AI BRIEF (deferred load — page renders fast, brief loads after) */}
+      <div className="surface-card p-5 bg-gradient-to-br from-indigo-50/40 via-white to-cyan-50/30 border-l-4 border-l-indigo-500">
+        <div className="flex items-center gap-2 mb-3 text-fg-text">
+          <Sparkles className="w-4 h-4 text-indigo-600" />
+          <h2 className="text-sm font-semibold uppercase tracking-wider">AI brief</h2>
+          {aiLoading && <span className="text-[10px] text-fg-subtle ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />Generating…</span>}
+        </div>
+        {aiLoading ? (
+          <div className="space-y-2 animate-pulse">
+            <div className="h-4 bg-indigo-100/60 rounded w-3/4"></div>
+            <div className="h-4 bg-indigo-100/60 rounded w-1/2"></div>
+            <div className="h-4 bg-cyan-100/60 rounded w-2/3 mt-3"></div>
           </div>
+        ) : aiBrief ? (
           <div className="space-y-2.5">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-indigo-700 font-semibold mb-0.5">Why call NOW</div>
@@ -204,8 +223,10 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
               </div>
             )}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-fg-muted italic">No AI brief available — lead has no form responses to analyze yet.</p>
+        )}
+      </div>
 
       {/* RULE-BASED REASONING + TALKING POINTS (always visible, complements AI brief) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -289,6 +310,11 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
         </div>
       </div>
 
+      {/* PAYMENTS (prominent section — was previously buried in timeline) */}
+      {detail.payments.length > 0 && (
+        <PaymentsCard payments={detail.payments} />
+      )}
+
       {/* TIMELINE */}
       <div className="surface-card p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider mb-4 text-fg-text">Timeline</h2>
@@ -298,7 +324,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
         </div>
       </div>
 
-      {/* FORM RESPONSES */}
+      {/* FORM RESPONSES — open by default per founder feedback */}
       {Object.keys(allResponses).length > 0 && (
         <div className="surface-card overflow-hidden">
           <button
@@ -307,25 +333,78 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrie
           >
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-fg-muted" />
-              <h2 className="text-sm font-semibold uppercase tracking-wider">Form responses</h2>
-              <span className="text-xs text-fg-muted">({Object.keys(allResponses).length} answers)</span>
+              <h2 className="text-sm font-semibold uppercase tracking-wider">Application form · {Object.keys(allResponses).length} answers</h2>
             </div>
             {responsesOpen ? <ChevronUp className="w-4 h-4 text-fg-muted"/> : <ChevronDown className="w-4 h-4 text-fg-muted"/>}
           </button>
           {responsesOpen && (
-            <div className="px-6 pb-6 space-y-3 border-t border-fg-border pt-4">
-              {Object.entries(allResponses).map(([q, a], i) => (
-                <div key={i} className="text-sm">
-                  <div className="text-[11px] text-fg-muted uppercase tracking-wider mb-1">{q}</div>
-                  <div className="text-fg-text leading-relaxed whitespace-pre-wrap">
-                    {Array.isArray(a) ? a.join(", ") : (a == null ? "—" : String(a))}
-                  </div>
-                </div>
-              ))}
+            <div className="px-6 pb-6 border-t border-fg-border pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {Object.entries(allResponses).map(([q, a], i) => {
+                  const valStr = Array.isArray(a) ? a.join(", ") : (a == null ? "" : String(a));
+                  const isLong = valStr.length > 120;
+                  return (
+                    <div key={i} className={`text-sm ${isLong ? "md:col-span-2" : ""}`}>
+                      <div className="text-[11px] text-fg-muted uppercase tracking-wider mb-1 font-medium">{q}</div>
+                      <div className="text-fg-text leading-relaxed whitespace-pre-wrap bg-fg-surface/40 px-3 py-2 rounded border border-fg-border/70">
+                        {valStr || <span className="text-fg-subtle italic">—</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
+  const captured = payments.filter(p => p.status === "captured");
+  const total = captured.reduce((s, p) => s + Number(p.amount_inr || 0), 0);
+  return (
+    <div className="surface-card p-6">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-fg-text inline-flex items-center gap-2">
+          <IndianRupee className="w-4 h-4 text-emerald-600" />
+          Payments · {payments.length}
+        </h2>
+        <div className="text-sm text-fg-muted">
+          Total captured: <span className="font-semibold text-emerald-700 tabular-nums">{inr(total)}</span>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-md border border-fg-border">
+        <table className="w-full text-sm">
+          <thead className="bg-fg-surface text-[11px] uppercase tracking-wider text-fg-muted">
+            <tr>
+              <th className="text-left px-3 py-2 font-medium">Date</th>
+              <th className="text-left px-3 py-2 font-medium">Type</th>
+              <th className="text-right px-3 py-2 font-medium">Amount</th>
+              <th className="text-left px-3 py-2 font-medium">Status</th>
+              <th className="text-left px-3 py-2 font-medium">Account</th>
+              <th className="text-left px-3 py-2 font-medium">Razorpay ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map(p => (
+              <tr key={p.id} className="border-t border-fg-border/70">
+                <td className="px-3 py-2 whitespace-nowrap">{fmtDate(p.paid_at)}</td>
+                <td className="px-3 py-2 whitespace-nowrap font-medium text-fg-text">{(p.payment_type || "—").replace(/_/g, " ")}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{inr(p.amount_inr)}</td>
+                <td className="px-3 py-2">
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded ${p.status === "captured" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : p.status === "failed" ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"}`}>
+                    {p.status || "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-fg-muted whitespace-nowrap">{p.account}</td>
+                <td className="px-3 py-2 text-fg-subtle text-[11px] font-mono">{p.id}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
