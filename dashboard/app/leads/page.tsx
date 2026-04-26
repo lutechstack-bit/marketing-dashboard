@@ -23,7 +23,7 @@ export default async function LeadsPage() {
             </p>
           </div>
           <div className="flex gap-2.5">
-            <KpiPill label="Rescue" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
+            <KpiPill label="Need to book interview" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
             <KpiPill label="Hot 75+" value={stats.hot_75plus} icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
             <KpiPill label="Total"   value={stats.total}      icon={<Users className="w-3.5 h-3.5" />} accent="slate" />
           </div>

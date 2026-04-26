@@ -24,7 +24,7 @@ export type LeadRow = {
   // joined from view:
   last_contacted_at?: string | null;
   last_contacted_by?: string | null;
-  last_action?: string | null;
+  last_action?: string | null;       // raw lead_activities.action (latest non-note)
   last_payment_amount?: number | null;
   last_payment_at?: string | null;
   captured_payment_count?: number;
@@ -99,13 +99,15 @@ export async function fetchLeads(opts: {
     offset += PAGE;
   }
 
-  // Batch payment summaries
+  // Batch payment summaries + latest status (lead_activities) — both chunked
   if (leads.length) {
     const ids = leads.map(l => l.id);
     const pays: any[] = [];
+    const acts: any[] = [];
     const CHUNK = 200;
     for (let i = 0; i < ids.length; i += CHUNK) {
       const idChunk = ids.slice(i, i + CHUNK);
+      // payments
       let off2 = 0;
       while (true) {
         const { data, error } = await supabase
@@ -119,23 +121,52 @@ export async function fetchLeads(opts: {
         if (!data || data.length < 1000) break;
         off2 += 1000;
       }
+      // activities — keep all, we'll pick latest non-note per lead client-side
+      let off3 = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("lead_activities")
+          .select("lead_id,action,rep_name,created_at")
+          .in("lead_id", idChunk)
+          .neq("action", "note")
+          .order("created_at", { ascending: false })
+          .range(off3, off3 + 999);
+        if (error) break;
+        acts.push(...(data || []));
+        if (!data || data.length < 1000) break;
+        off3 += 1000;
+      }
     }
-    const byLead: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
-    for (const p of (pays || [])) {
-      const k = (p as any).lead_id;
-      if (!byLead[k]) byLead[k] = { count: 0 };
-      byLead[k].count++;
-      if (!byLead[k].last_at || (p as any).paid_at > byLead[k].last_at!) {
-        byLead[k].last_at = (p as any).paid_at;
-        byLead[k].last_amt = (p as any).amount_inr;
+    // Index payments
+    const byLeadPay: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
+    for (const p of pays) {
+      const k = p.lead_id;
+      if (!byLeadPay[k]) byLeadPay[k] = { count: 0 };
+      byLeadPay[k].count++;
+      if (!byLeadPay[k].last_at || p.paid_at > byLeadPay[k].last_at!) {
+        byLeadPay[k].last_at = p.paid_at;
+        byLeadPay[k].last_amt = p.amount_inr;
+      }
+    }
+    // Index latest activity per lead (acts already sorted desc by created_at)
+    const byLeadAct: Record<string, { action: string; rep_name: string | null; created_at: string }> = {};
+    for (const a of acts) {
+      if (!byLeadAct[a.lead_id]) {
+        byLeadAct[a.lead_id] = { action: a.action, rep_name: a.rep_name, created_at: a.created_at };
       }
     }
     for (const l of leads) {
-      const s = byLead[l.id];
-      if (s) {
-        l.captured_payment_count = s.count;
-        l.last_payment_amount    = s.last_amt;
-        l.last_payment_at        = s.last_at;
+      const p = byLeadPay[l.id];
+      if (p) {
+        l.captured_payment_count = p.count;
+        l.last_payment_amount    = p.last_amt;
+        l.last_payment_at        = p.last_at;
+      }
+      const a = byLeadAct[l.id];
+      if (a) {
+        l.last_action       = a.action;
+        l.last_contacted_by = a.rep_name;
+        l.last_contacted_at = a.created_at;
       }
     }
   }

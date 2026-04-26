@@ -10,12 +10,13 @@ import type { LeadRow, FormSubmissionRow, PaymentRow, LeadActivityRow } from "@/
 import { inr, fmtDate } from "@/lib/format";
 import { suggestTalkingPoints, whyHotReason } from "@/lib/insights";
 import type { CalendlyBooking } from "@/lib/calendly";
+import StatusDropdown from "./StatusDropdown";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
   form_partial:   { label: "Form partial",   cls: "bg-slate-100 text-slate-700 ring-1 ring-slate-200" },
   form_submitted: { label: "Form submitted", cls: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200" },
   app_fee_paid:   { label: "App fee paid",   cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
-  accepted:       { label: "🔥 Rescue zone", cls: "bg-amber-100 text-amber-900 ring-1 ring-amber-300" },
+  accepted:       { label: "App fee paid · need interview booking", cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-200" },
   confirmed:      { label: "Confirmed",      cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" },
   balance_paid:   { label: "Paid in full",   cls: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" },
   lost:           { label: "Lost",           cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" },
@@ -159,15 +160,21 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
           {lead.phone && <ActionLink href={`tel:${lead.phone}`} icon={<Phone className="w-4 h-4"/>} label="Call" tone="emerald" />}
           {lead.phone && <ActionLink href={`https://wa.me/${lead.phone}`} icon={<MessageCircle className="w-4 h-4"/>} label="WhatsApp" tone="green" external />}
           {lead.email && <ActionLink href={`mailto:${lead.email}`} icon={<Mail className="w-4 h-4"/>} label="Email" tone="cyan" />}
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-fg-muted">Logging as</span>
-            <select
-              value={repName}
-              onChange={e => { setRepName(e.target.value); localStorage.setItem("levelup-current-rep", e.target.value); }}
-              className="text-sm px-2 py-1 rounded-md border border-fg-border bg-white text-fg-text focus:border-slate-400 focus:outline-none"
-            >
-              {REPS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+          <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-fg-muted">Status</span>
+              <StatusDropdown leadId={lead.id} initialStatus={lead.last_action} repName={repName} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-fg-muted">Logging as</span>
+              <select
+                value={repName}
+                onChange={e => { setRepName(e.target.value); localStorage.setItem("levelup-current-rep", e.target.value); }}
+                className="text-sm px-2 py-1 rounded-md border border-fg-border bg-white text-fg-text focus:border-slate-400 focus:outline-none"
+              >
+                {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
           </div>
         </div>
       </div>

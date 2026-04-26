@@ -29,12 +29,17 @@ const DATE_PRESETS: { id: string; label: string; hours: number | null }[] = [
 type SavedView = { id: string; label: string; description: string; predicate: (l: LeadRow) => boolean };
 const SAVED_VIEWS: SavedView[] = [
   {
-    id: "rescue", label: "🔥 Rescue zone",
-    description: "Paid app fee, hasn't confirmed — call NOW",
+    id: "abandoned", label: "Abandoned (form done, no app fee)",
+    description: "Filled the application but didn't pay the app fee — bucket A on /queue",
+    predicate: (l) => l.funnel_stage === "form_submitted",
+  },
+  {
+    id: "need_to_book", label: "Need to book interview",
+    description: "Paid app fee but didn't book Calendly — bucket B on /queue",
     predicate: (l) => l.funnel_stage === "accepted",
   },
   {
-    id: "hot_today", label: "Hot · today",
+    id: "hot_today", label: "Hot · last 24h",
     description: "Score 75+, activity in the last 24h",
     predicate: (l) => l.score >= 75 && hoursSince(l.last_activity) <= 24,
   },
@@ -43,18 +48,13 @@ const SAVED_VIEWS: SavedView[] = [
     description: "Form submitted, no activity in 7 days — re-engage",
     predicate: (l) => l.funnel_stage === "form_submitted" && hoursSince(l.last_activity) >= 24 * 7,
   },
-  {
-    id: "new_paid", label: "Just paid app fee",
-    description: "Paid in last 48h — call before they cool off",
-    predicate: (l) => l.funnel_stage === "accepted" && hoursSince(l.last_activity) <= 48,
-  },
 ];
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
   form_partial:   { label: "Form partial",   cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" },
   form_submitted: { label: "Form submitted", cls: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200" },
   app_fee_paid:   { label: "App fee paid",   cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
-  accepted:       { label: "🔥 Rescue",      cls: "bg-amber-100 text-amber-900 ring-1 ring-amber-300 font-semibold" },
+  accepted:       { label: "App fee paid",   cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-200" },
   confirmed:      { label: "Confirmed",      cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" },
   balance_paid:   { label: "Paid in full",   cls: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 font-semibold" },
   lost:           { label: "Lost",           cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" },
