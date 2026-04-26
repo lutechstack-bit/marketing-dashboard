@@ -23,7 +23,7 @@ export const EVENT_TO_PROGRAM: Record<string, string> = {
   "Video Editing Academy- Interview":                "VE",
   "LevelUp UI/UX Academy- Interview":                "L3-UX",
   "the LevelUp Creator Academy Interview":           "L3C",
-  "The LevelUp Screenwriting Program":               "SW101",
+  "The LevelUp Screenwriting Program":               "L3SW",
 };
 
 export type CalendlyBooking = {
