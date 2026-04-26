@@ -3,16 +3,21 @@
 
 import { supabase } from "./supabase";
 
-// Tally form ID → program code
+// Tally form ID → program code. Add new forms here when wiring webhooks.
 export const TALLY_FORM_TO_PROGRAM: Record<string, { program: string; name: string }> = {
-  "nPJydd": { program: "FFM", name: "Forge Filmmaking (current)"        },
+  // ---- Forge ----
+  "nPJydd": { program: "FFM", name: "Forge Filmmaking (current Meta)"   },
   "316Mel": { program: "FFM", name: "Forge Filmmaking (legacy main)"    },
+  "3xLgrd": { program: "FFM", name: "Forge Filmmaking YT"               },
+  "wQ4YQ8": { program: "FFM", name: "Filmmaking Bootcamp Forge YT"      },
   "3NZXk0": { program: "FW",  name: "Forge Writing (current)"           },
   "3lY56o": { program: "FW",  name: "Forge Writing (legacy)"            },
   "kdWEXR": { program: "FAI", name: "Forge AI"                          },
   "3EgP2L": { program: "FC",  name: "Forge Creators"                    },
-  // Live programs — wired now so when ingestion is added, the receiver works
+  // ---- Live (ready when you wire webhooks for them) ----
   "nWLkyk": { program: "VE",  name: "VE | EXP (Meta Ads)"               },
+  "dWPVQd": { program: "VE",  name: "VE | Google Ads"                   },
+  "1AKWXp": { program: "VE",  name: "VE | EXP (YT Collab)"              },
   "npvj5y": { program: "BFP", name: "BFP | Exp (Meta Ads)"              },
   "81dRPA": { program: "FC",  name: "Creators <> Meta Ads"              },
 };
