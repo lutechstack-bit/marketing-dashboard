@@ -10,6 +10,7 @@ import type { LeadRow, FormSubmissionRow, PaymentRow, LeadActivityRow } from "@/
 import { inr, fmtDate } from "@/lib/format";
 import { suggestTalkingPoints, whyHotReason } from "@/lib/insights";
 import type { CalendlyBooking } from "@/lib/calendly";
+import type { AiWhyHot } from "@/lib/ai-insights";
 import StatusDropdown from "./StatusDropdown";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
@@ -37,9 +38,10 @@ type Props = {
     activities: LeadActivityRow[];
   };
   calendlyBookings?: CalendlyBooking[];
+  aiBrief?: AiWhyHot | null;
 };
 
-export default function LeadDetailClient({ detail, calendlyBookings = [] }: Props) {
+export default function LeadDetailClient({ detail, calendlyBookings = [], aiBrief }: Props) {
   const router = useRouter();
   const [activities, setActivities] = useState<LeadActivityRow[]>(detail.activities);
   const [submitting, setSubmitting] = useState(false);
@@ -179,7 +181,33 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
         </div>
       </div>
 
-      {/* WHY HOT + TALKING POINTS */}
+      {/* AI BRIEF (if available) */}
+      {aiBrief && (
+        <div className="surface-card p-5 bg-gradient-to-br from-indigo-50/40 via-white to-cyan-50/30 border-l-4 border-l-indigo-500">
+          <div className="flex items-center gap-2 mb-3 text-fg-text">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider">AI brief · GPT-4o-mini</h2>
+            <span className="text-[10px] text-fg-subtle ml-auto">cached</span>
+          </div>
+          <div className="space-y-2.5">
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-indigo-700 font-semibold mb-0.5">Why call NOW</div>
+              <p className="text-base text-fg-text leading-relaxed">{aiBrief.why_now}</p>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-cyan-700 font-semibold mb-0.5">Best opener</div>
+              <p className="text-base text-fg-text leading-relaxed italic">&ldquo;{aiBrief.best_opener}&rdquo;</p>
+            </div>
+            {aiBrief.flag && (
+              <div className="mt-2 px-3 py-2 rounded bg-amber-50 ring-1 ring-amber-200 text-sm text-amber-900">
+                ⚑ {aiBrief.flag}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* RULE-BASED REASONING + TALKING POINTS (always visible, complements AI brief) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="surface-card p-5">
           <div className="flex items-center gap-2 mb-3 text-fg-text">
@@ -192,7 +220,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
         <div className="surface-card p-5">
           <div className="flex items-center gap-2 mb-3 text-fg-text">
             <Sparkles className="w-4 h-4 text-cyan-600" />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">Suggested talking points</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wider">Talking points</h2>
           </div>
           <ul className="space-y-2">
             {talking.map((t, i) => (

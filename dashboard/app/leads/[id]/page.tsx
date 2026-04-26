@@ -1,6 +1,7 @@
 import Header from "@/components/Header";
 import { getLeadDetail } from "@/lib/supabase";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
+import { aiWhyHotCached } from "@/lib/ai-insights";
 import LeadDetailClient from "@/components/LeadDetailClient";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -12,18 +13,28 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const detail = await getLeadDetail(id);
 
-  // Look up Calendly bookings for this lead's email — tighter 60d window
-  // since lead-detail page loads on every click and shouldn't drag.
-  let bookings: any[] = [];
-  if (detail.lead?.email) {
-    try {
-      const all = await fetchBookingsCached(60);
-      const idx = indexByEmail(all);
-      bookings = idx[detail.lead.email.toLowerCase()] || [];
-    } catch (e: any) {
-      console.error("[lead-detail] Calendly fetch failed:", e?.message);
-    }
-  }
+  // Run Calendly + AI in parallel — both are cached so 99% of loads are instant.
+  const [bookings, aiBrief] = await Promise.all([
+    (async () => {
+      if (!detail.lead?.email) return [];
+      try {
+        const all = await fetchBookingsCached(60);
+        return indexByEmail(all)[detail.lead.email.toLowerCase()] || [];
+      } catch (e: any) {
+        console.error("[lead-detail] Calendly fetch failed:", e?.message);
+        return [];
+      }
+    })(),
+    (async () => {
+      if (!detail.lead) return null;
+      try {
+        return await aiWhyHotCached(detail.lead, detail.submissions);
+      } catch (e: any) {
+        console.error("[lead-detail] AI brief failed:", e?.message);
+        return null;
+      }
+    })(),
+  ]);
 
   if (!detail.lead) {
     return (
@@ -49,7 +60,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <Link href="/leads" className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg-text mb-4">
           <ChevronLeft className="w-4 h-4" />Back to leads
         </Link>
-        <LeadDetailClient detail={detail} calendlyBookings={bookings} />
+        <LeadDetailClient detail={detail} calendlyBookings={bookings} aiBrief={aiBrief} />
       </main>
     </>
   );
