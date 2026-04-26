@@ -132,7 +132,9 @@ export function normalizePhone(raw?: string | null): string | null {
   return digits;
 }
 
-/** Given form fields in Tally's flat structure, extract email / phone / name + a flat responses dict. */
+/** Given form fields in Tally's flat structure, extract email / phone / name + a flat responses dict.
+ *  Permissive: accepts string or number values, matches a wide range of label patterns,
+ *  handles Tally's multi-choice option-ID → label resolution. */
 export function tallyExtractFields(fields: any[]): {
   email: string | null; phone: string | null; name: string | null; responses: Record<string, any>;
 } {
@@ -140,25 +142,49 @@ export function tallyExtractFields(fields: any[]): {
   let email: string | null = null;
   let phone: string | null = null;
   let name: string | null = null;
+
+  const stringify = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number") return String(v);
+    if (Array.isArray(v)) return v.map(stringify).filter(Boolean).join(", ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  };
+
   for (const f of fields || []) {
     const label = (f.label || f.key || "").toString().trim();
     const type = (f.type || "").toUpperCase();
     let val = f.value;
     if (Array.isArray(val) && f.options) {
-      // Multi-choice: replace option IDs with labels
       const labelMap = Object.fromEntries(f.options.map((o: any) => [o.id, o.text]));
       val = val.map((v: any) => labelMap[v] || v);
     }
     if (label) responses[label] = val;
-    // Best-effort identity extraction
-    if (!email && (type === "INPUT_EMAIL" || /e-?mail/i.test(label))) {
-      if (typeof val === "string") email = val.toLowerCase();
+
+    // EMAIL — broad detection
+    if (!email) {
+      if (type === "INPUT_EMAIL" || /e-?mail/i.test(label) || /e-?mail/i.test(f.key || "")) {
+        const s = stringify(val);
+        if (s.includes("@")) email = s.toLowerCase();
+      }
     }
-    if (!phone && (type === "INPUT_PHONE_NUMBER" || /phone|mobile|whatsapp/i.test(label))) {
-      if (typeof val === "string") phone = val;
+    // PHONE — broad detection (Tally types: INPUT_PHONE_NUMBER; also INPUT_TEXT/INPUT_NUMBER with phone label)
+    if (!phone) {
+      const phoneLabel = /phone|mobile|whatsapp|contact\s*num|cell|^number$/i.test(label) || /phone|mobile|whatsapp/i.test(f.key || "");
+      const phoneType = type === "INPUT_PHONE_NUMBER";
+      if (phoneType || phoneLabel) {
+        const s = stringify(val).replace(/[^\d+]/g, "");
+        if (s.length >= 8) phone = s;
+      }
     }
-    if (!name && (type === "INPUT_TEXT") && /^name$|full name|your name/i.test(label)) {
-      if (typeof val === "string") name = val;
+    // NAME — broad detection
+    if (!name) {
+      const nameLabel = /^name$|full[\s_-]?name|your[\s_-]?name|first[\s_-]?name|legal[\s_-]?name/i.test(label);
+      if (nameLabel) {
+        const s = stringify(val);
+        if (s && s.length < 200) name = s;
+      }
     }
   }
   return { email, phone, name, responses };

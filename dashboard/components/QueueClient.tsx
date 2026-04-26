@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Phone, MessageCircle, Mail, ChevronRight, CheckCircle2, AlertCircle, Radio,
+  Phone, MessageCircle, Mail, ChevronRight, CheckCircle2, Radio, Flame, Zap, Clock,
+  IndianRupee, Sparkles,
 } from "lucide-react";
 import type { LeadRow } from "@/lib/supabase";
 import { whyHotReason } from "@/lib/insights";
@@ -30,6 +31,11 @@ function fmtAgo(iso?: string | null): string {
   if (h < 24 * 7)   return `${Math.round(h / 24)}d`;
   return `${Math.round(h / (24 * 7))}w`;
 }
+function fmtSubmitted(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+}
 function bucketFor(l: LeadRow): BucketId | null {
   switch (l.funnel_stage) {
     case "form_submitted": return "abandoned";
@@ -38,6 +44,19 @@ function bucketFor(l: LeadRow): BucketId | null {
     case "form_partial":   return "partials";
     default: return null;
   }
+}
+
+// Stub for incentive math — config-driven so user can edit one place.
+// TODO: when user sends real incentive ladder, populate this from a config file.
+function incentiveFor(score: number, bucketId: BucketId): { amount: number; label: string } | null {
+  // Simple inverse-linear stub: lower score → higher payout (harder to convert).
+  // base 1500, +20 per (100-score) point, capped 100% above for partials/abandoned.
+  if (bucketId === "partials") return null; // partials not yet incentivized
+  const base = bucketId === "abandoned" ? 1500 : 800; // app fee push pays more than booking push
+  const variable = Math.max(0, (100 - score)) * 18;
+  const amount = Math.round(base + variable);
+  const label = bucketId === "abandoned" ? "if app fee paid" : "if interview booked";
+  return { amount, label };
 }
 
 // ----------------------------------------------------------------
@@ -57,8 +76,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
   const [mounted, setMounted] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // Auto-refresh every 30s while the tab is visible — picks up new webhook
-  // ingestions without the rep having to manually reload.
+  // Auto-refresh every 30s while tab visible
   useEffect(() => {
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && !document.hidden) {
@@ -69,7 +87,6 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     return () => clearInterval(interval);
   }, [router]);
 
-  // Restore + persist user choices
   useEffect(() => {
     if (typeof window === "undefined") return;
     const f = localStorage.getItem("levelup-family") as Family | null;
@@ -81,8 +98,6 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     setMounted(true);
   }, []);
 
-  // When family changes, snap product to the first product of that family
-  // unless the current product already belongs to it.
   useEffect(() => {
     const cur = PRODUCT_BY_CODE[product];
     if (!cur || cur.family !== family) {
@@ -91,20 +106,19 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     }
   }, [family, product]);
 
-  const setFamilyP = (f: Family) => { setFamily(f); localStorage.setItem("levelup-family", f); };
-  const setProductP = (p: string) => { setProduct(p); localStorage.setItem("levelup-current-product", p); };
-  const setBucketP  = (b: BucketId) => { setBucket(b); localStorage.setItem("levelup-current-bucket", b); };
+  const setFamilyP  = (f: Family)   => { setFamily(f);  localStorage.setItem("levelup-family", f); };
+  const setProductP = (p: string)   => { setProduct(p); localStorage.setItem("levelup-current-product", p); };
+  const setBucketP  = (b: BucketId) => { setBucket(b);  localStorage.setItem("levelup-current-bucket", b); };
 
-  // Booked-email Set for O(1) lookup
   const bookedSet = useMemo(() => new Set(bookedEmails), [bookedEmails]);
 
-  // All leads for the selected product
+  // Leads filtered to current product
   const productLeads = useMemo(
     () => initialLeads.filter(l => l.program === product),
     [initialLeads, product]
   );
 
-  // Bucket the leads — bucket B uses Calendly to drop already-booked ones
+  // Bucket filtered (with Calendly de-dup for B)
   const bucketed = useMemo(() => {
     const out: Record<BucketId, LeadRow[]> = { abandoned: [], need_to_book: [], partials: [] };
     for (const l of productLeads) {
@@ -112,7 +126,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       if (!b) continue;
       if (b === "need_to_book" && calendlyConnected) {
         const email = (l.email || "").toLowerCase();
-        if (email && bookedSet.has(email)) continue; // they already booked
+        if (email && bookedSet.has(email)) continue;
       }
       out[b].push(l);
     }
@@ -125,7 +139,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     return out;
   }, [productLeads, bookedSet, calendlyConnected]);
 
-  // Per-product counts across ALL three buckets, used in the product-tab badges
+  // Counts across ALL products (drives the product-tab badges)
   const productCounts = useMemo(() => {
     const c: Record<string, { abandoned: number; need_to_book: number; partials: number }> = {};
     for (const p of PRODUCTS) c[p.code] = { abandoned: 0, need_to_book: 0, partials: 0 };
@@ -142,6 +156,17 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     return c;
   }, [initialLeads, bookedSet, calendlyConnected]);
 
+  // Today's Focus stats — across the CURRENT product
+  const focus = useMemo(() => {
+    const newLastHour = productLeads.filter(l => hoursSince(l.first_seen) <= 1).length;
+    const new24h      = productLeads.filter(l => hoursSince(l.first_seen) <= 24).length;
+    const oldestHotInQueue = bucketed.abandoned.concat(bucketed.need_to_book)
+      .map(l => hoursSince(l.first_seen))
+      .filter(h => Number.isFinite(h))
+      .sort((a, b) => b - a)[0] || 0;
+    return { newLastHour, new24h, oldestHotInQueue };
+  }, [productLeads, bucketed]);
+
   const productMeta = PRODUCT_BY_CODE[product];
   const visible = bucketed[bucket];
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
@@ -155,22 +180,34 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
           <p className="text-sm text-fg-muted mt-1">
             {today} · viewing <span className="font-semibold text-fg-text">{productMeta?.longName || product}</span>
             {!calendlyConnected && (
-              <span className="ml-2 text-amber-700 italic">· Calendly disconnected — bucket B uses time approximation</span>
+              <span className="ml-2 text-amber-700 italic">· Calendly disconnected</span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-fg-muted">
           <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-          <span>Auto-refreshing every 30s</span>
-          <span className="text-fg-subtle hidden md:inline">· last sync {lastRefresh.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+          <span>Auto-refresh · 30s</span>
+          <span className="text-fg-subtle hidden md:inline">· {lastRefresh.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
         </div>
       </div>
 
-      {/* Family tabs (Forge | Live) — primary axis */}
+      {/* Family tabs */}
       <FamilyTabs current={family} onChange={setFamilyP} />
 
-      {/* Product tabs — for the active family */}
+      {/* Product tabs */}
       <ProductTabs family={family} current={product} counts={productCounts} onChange={setProductP} />
+
+      {/* Today's Focus banner */}
+      {mounted && (
+        <FocusBanner
+          productName={productMeta?.longName || product}
+          newLastHour={focus.newLastHour}
+          new24h={focus.new24h}
+          oldestHotHours={focus.oldestHotInQueue}
+          totalAbandoned={bucketed.abandoned.length}
+          totalNeedBook={bucketed.need_to_book.length}
+        />
+      )}
 
       {/* Bucket toggles */}
       <BucketTabs current={bucket} counts={{
@@ -234,8 +271,8 @@ function ProductTabs({ family, current, counts, onChange }: {
                 isActive ? aux.tabActive : "border-transparent text-fg-muted hover:text-fg-text"
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${aux.dot}`} />
-              <span>{p.name}</span>
+              <span className={`w-2.5 h-2.5 rounded-full ${aux.dot}`} />
+              <span className="font-semibold">{p.name}</span>
               <span className="flex items-center gap-1 text-[11px] tabular-nums">
                 <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title="Abandoned (form complete, no app fee)">{c.abandoned}</span>
                 <span className="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800" title="Need to book interview">{c.need_to_book}</span>
@@ -245,6 +282,45 @@ function ProductTabs({ family, current, counts, onChange }: {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------
+// Today's Focus banner — what changed in the last hour
+// ----------------------------------------------------------------
+function FocusBanner({ productName, newLastHour, new24h, oldestHotHours, totalAbandoned, totalNeedBook }: {
+  productName: string; newLastHour: number; new24h: number; oldestHotHours: number; totalAbandoned: number; totalNeedBook: number;
+}) {
+  if (newLastHour === 0 && new24h === 0 && totalAbandoned === 0 && totalNeedBook === 0) return null;
+  const oldestLabel = oldestHotHours < 1 ? `${Math.round(oldestHotHours * 60)}m`
+                    : oldestHotHours < 24 ? `${Math.round(oldestHotHours)}h`
+                    : `${Math.round(oldestHotHours / 24)}d`;
+  return (
+    <div className="surface-card mt-3 mb-4 p-4 bg-gradient-to-br from-amber-50/60 via-white to-yellow-50/40 border-l-4 border-l-yellow-500">
+      <div className="flex items-start gap-3">
+        <Sparkles className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-fg-text mb-1.5">Today&apos;s focus · {productName}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <FocusStat icon={<Zap className="w-3.5 h-3.5"/>} value={newLastHour} label="new in last hour" tone={newLastHour > 0 ? "hot" : "neutral"} />
+            <FocusStat icon={<Clock className="w-3.5 h-3.5"/>} value={new24h} label="new in 24h" tone="neutral" />
+            <FocusStat icon={<Flame className="w-3.5 h-3.5"/>} value={totalAbandoned} label="awaiting app fee" tone={totalAbandoned > 0 ? "warm" : "neutral"} />
+            <FocusStat icon={<Clock className="w-3.5 h-3.5"/>} valueText={oldestLabel} label="oldest in queue" tone={oldestHotHours > 24 ? "hot" : "warm"} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FocusStat({ icon, value, valueText, label, tone }: { icon: React.ReactNode; value?: number; valueText?: string; label: string; tone: "hot" | "warm" | "neutral" }) {
+  const toneCls = tone === "hot" ? "text-amber-700" : tone === "warm" ? "text-cyan-700" : "text-fg-text";
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className={`${toneCls}`}>{icon}</span>
+      <span className={`text-xl font-bold tabular-nums ${toneCls}`}>{valueText ?? value}</span>
+      <span className="text-xs text-fg-muted leading-tight">{label}</span>
     </div>
   );
 }
@@ -293,8 +369,8 @@ function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: Bu
         <h2 className="text-lg font-semibold text-fg-text">No leads in this bucket</h2>
         <p className="text-sm text-fg-muted mt-1 max-w-md mx-auto">
           {isLiveEmpty
-            ? "Live program ingestion (VE / BFP / L3C Tally forms) hasn't been wired yet — these tabs will populate once the forms are connected."
-            : "Either the queue is genuinely empty, or all leads in this bucket have been moved on. Try another bucket."}
+            ? "Live program ingestion (VE / BFP / L3C Tally forms) hasn't been wired yet."
+            : "Either the queue is empty, or all leads in this bucket have been moved on."}
         </p>
       </div>
     );
@@ -310,37 +386,42 @@ function LeadsList({ leads, bucketId, family }: { leads: LeadRow[]; bucketId: Bu
               <th className="py-3 px-2 font-medium w-14">Score</th>
               <th className="py-3 px-2 font-medium">Name</th>
               <th className="py-3 px-2 font-medium">Phone</th>
+              <th className="py-3 px-2 font-medium">Submitted</th>
               <th className="py-3 px-2 font-medium">Why hot</th>
-              <th className="py-3 px-2 font-medium w-20">Last</th>
+              <th className="py-3 px-2 font-medium w-32">Incentive</th>
               <th className="py-3 px-2 font-medium w-44">Status</th>
               <th className="py-3 pr-4 pl-2 font-medium w-44">Actions</th>
             </tr>
           </thead>
           <tbody>
             {leads.slice(0, 200).map((l, i) => (
-              <LeadRowView key={l.id} lead={l} rank={i + 1} />
+              <LeadRowView key={l.id} lead={l} rank={i + 1} bucketId={bucketId} />
             ))}
           </tbody>
         </table>
       </div>
       <div className="px-4 py-2.5 text-xs bg-fg-surface text-fg-muted border-t border-fg-border">
         Showing {Math.min(leads.length, 200).toLocaleString("en-IN")} of {leads.length.toLocaleString("en-IN")} in <span className="font-semibold text-fg-text">{BUCKETS[bucketId].label}</span>
-        {leads.length > 200 && " — apply filters in /leads to narrow further."}
       </div>
     </div>
   );
 }
 
-function LeadRowView({ lead, rank }: { lead: LeadRow; rank: number }) {
+function LeadRowView({ lead, rank, bucketId }: { lead: LeadRow; rank: number; bucketId: BucketId }) {
   const why = whyHotReason(lead);
+  const submittedRecent = hoursSince(lead.first_seen) <= 1;
+  const incentive = incentiveFor(lead.score, bucketId);
   return (
-    <tr className="border-b border-fg-border/70 row-hover align-top">
+    <tr className={`border-b border-fg-border/70 row-hover align-top ${submittedRecent ? "bg-yellow-50/40" : ""}`}>
       <td className="py-3 pl-4 pr-2 text-xs text-fg-subtle tabular-nums">{rank}</td>
-      <td className="py-3 px-2"><ScoreBadge score={lead.score} /></td>
-      <td className="py-3 px-2 max-w-[200px]">
-        <Link href={`/leads/${lead.id}`} className="font-medium text-fg-text hover:text-amber-700 hover:underline truncate block">
-          {lead.name || <span className="italic text-fg-subtle">No name</span>}
-        </Link>
+      <td className="py-3 px-2"><ScoreBadge score={lead.score} breakdown={lead.score_breakdown} /></td>
+      <td className="py-3 px-2 max-w-[220px]">
+        <div className="flex items-center gap-1.5">
+          <Link href={`/leads/${lead.id}`} className="font-medium text-fg-text hover:text-amber-700 hover:underline truncate inline-block max-w-full">
+            {lead.name || <span className="italic text-fg-subtle">No name</span>}
+          </Link>
+          {submittedRecent && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-yellow-500 text-white shrink-0">NEW</span>}
+        </div>
         {lead.email && (
           <div className="text-xs text-fg-muted truncate" title={lead.email}>{lead.email}</div>
         )}
@@ -348,12 +429,23 @@ function LeadRowView({ lead, rank }: { lead: LeadRow; rank: number }) {
       <td className="py-3 px-2 tabular-nums whitespace-nowrap">
         {lead.phone ? (
           <a href={`tel:${lead.phone}`} className="text-fg-text hover:text-emerald-700 hover:underline">+{lead.phone}</a>
-        ) : <span className="text-fg-subtle">—</span>}
+        ) : <span className="text-fg-subtle italic">missing</span>}
+      </td>
+      <td className="py-3 px-2 whitespace-nowrap text-xs text-fg-muted">
+        <div className={submittedRecent ? "text-yellow-700 font-semibold" : ""}>{fmtSubmitted(lead.first_seen)}</div>
+        <div className="text-fg-subtle text-[10px]">{fmtAgo(lead.first_seen)} ago</div>
       </td>
       <td className="py-3 px-2 max-w-[280px]">
         <p className="text-xs text-fg-text/85 leading-snug line-clamp-2">{why}</p>
       </td>
-      <td className="py-3 px-2 tabular-nums text-xs text-fg-muted whitespace-nowrap">{fmtAgo(lead.last_activity)}</td>
+      <td className="py-3 px-2 whitespace-nowrap">
+        {incentive ? (
+          <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">
+            <IndianRupee className="w-3 h-3" />
+            <span className="text-xs font-bold tabular-nums">{incentive.amount.toLocaleString("en-IN")}</span>
+          </div>
+        ) : <span className="text-fg-subtle text-xs">—</span>}
+      </td>
       <td className="py-3 px-2">
         <StatusDropdown leadId={lead.id} initialStatus={lead.last_action} compact />
       </td>
@@ -383,14 +475,21 @@ function LeadRowView({ lead, rank }: { lead: LeadRow; rank: number }) {
   );
 }
 
-function ScoreBadge({ score }: { score: number }) {
+function ScoreBadge({ score, breakdown }: { score: number; breakdown?: Record<string, number> }) {
+  // Recalibrated thresholds (founder feedback): scores feel low because most leads
+  // sit at form_submitted, capping funnel pts at 12/35. Lowering Hot to 50 below.
   let cls;
-  if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";
-  else if (score >= 50) cls = "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300";
-  else if (score >= 25) cls = "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200";
-  else                  cls = "bg-slate-100 text-slate-500 ring-1 ring-slate-200";
+  if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";  // super hot
+  else if (score >= 50) cls = "bg-emerald-500 text-white shadow-sm";                     // hot
+  else if (score >= 25) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";          // warm
+  else                  cls = "bg-slate-100 text-slate-500 ring-1 ring-slate-200";       // cold
+
+  const tooltip = breakdown && Object.keys(breakdown).length > 0
+    ? Object.entries(breakdown).filter(([_, v]) => Number(v) > 0).map(([k, v]) => `${k.replace(/_/g, " ")}: +${v}`).join(" · ")
+    : `Score ${score}/100`;
+
   return (
-    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-md font-bold text-xs tabular-nums ${cls}`}>
+    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-md font-bold text-xs tabular-nums ${cls} cursor-help`} title={tooltip}>
       {score}
     </div>
   );

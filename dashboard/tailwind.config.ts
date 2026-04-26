@@ -5,24 +5,25 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Light surfaces — clean white with slate text
-        "fg-bg":      "#FFFFFF",   // page background
-        "fg-card":    "#FFFFFF",   // card surface (depth via border + shadow)
-        "fg-surface": "#F8FAFC",   // hover / table-header / alt surface (slate-50)
-        "fg-border":  "#E5E7EB",   // borders (gray-200)
-        "fg-muted":   "#64748B",   // secondary text (slate-500)
-        "fg-subtle":  "#94A3B8",   // tertiary text (slate-400)
-        "fg-text":    "#0F172A",   // primary text (slate-900)
+        // Light surfaces
+        "fg-bg":      "#FFFFFF",
+        "fg-card":    "#FFFFFF",
+        "fg-surface": "#F8FAFC",
+        "fg-border":  "#E5E7EB",
+        "fg-muted":   "#64748B",
+        "fg-subtle":  "#94A3B8",
+        "fg-text":    "#0F172A",
         // Program family accents
-        "forge":       "#F59E0B",  // amber — Forge offline residencies
-        "live":        "#3B82F6",  // blue  — Live online
-        "masterclass": "#A855F7",  // purple — Masterclass
-        "b2b":         "#10B981",  // emerald — B2B
-        // Per-program (Forge) accents
-        "ffm": "#EF4444",   // red — Filmmaking
-        "fw":  "#06B6D4",   // cyan — Writing
-        "fc":  "#84CC16",   // lime — Creators
-        "fai": "#F59E0B",   // amber — AI
+        "forge":       "#EAB308",  // amber-yellow — Forge (umbrella)
+        "live":        "#3B82F6",
+        "masterclass": "#A855F7",
+        "b2b":         "#10B981",
+        // Per-program (Forge) — user's chosen scheme:
+        // FFM = yellow, FW = sky (light blue), FC = red, FAI = indigo (dark blue)
+        "ffm": "#EAB308",   // yellow-500
+        "fw":  "#38BDF8",   // sky-400 (light blue)
+        "fc":  "#EF4444",   // red-500
+        "fai": "#4338CA",   // indigo-700 (dark blue)
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

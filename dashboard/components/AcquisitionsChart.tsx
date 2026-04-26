@@ -3,7 +3,7 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import type { AcquisitionRow } from "@/lib/data";
 
-const COLORS = { FFM: "#EF4444", FW: "#06B6D4", FC: "#84CC16", FAI: "#F59E0B" };
+const COLORS = { FFM: "#EAB308", FW: "#38BDF8", FC: "#EF4444", FAI: "#4338CA" };
 
 export default function AcquisitionsChart({ data }: { data: AcquisitionRow[] }) {
   const recent = data.slice(-12);

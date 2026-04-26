@@ -4,10 +4,10 @@ import { inr, pct, fmtInt, deltaPct } from "@/lib/format";
 import { ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
 
 const PROGRAM_STYLE: Record<string, { dot: string; ring: string; tag: string }> = {
-  FFM: { dot: "bg-rose-500",   ring: "ring-rose-200",   tag: "text-rose-700 bg-rose-50 ring-1 ring-rose-200" },
-  FW:  { dot: "bg-cyan-500",   ring: "ring-cyan-200",   tag: "text-cyan-700 bg-cyan-50 ring-1 ring-cyan-200" },
-  FC:  { dot: "bg-lime-500",   ring: "ring-lime-200",   tag: "text-lime-700 bg-lime-50 ring-1 ring-lime-200" },
-  FAI: { dot: "bg-amber-500",  ring: "ring-amber-200",  tag: "text-amber-700 bg-amber-50 ring-1 ring-amber-200" },
+  FFM: { dot: "bg-yellow-500", ring: "ring-yellow-200", tag: "text-yellow-800 bg-yellow-50 ring-1 ring-yellow-200" },
+  FW:  { dot: "bg-sky-400",    ring: "ring-sky-200",    tag: "text-sky-700 bg-sky-50 ring-1 ring-sky-200" },
+  FC:  { dot: "bg-red-500",    ring: "ring-red-200",    tag: "text-red-700 bg-red-50 ring-1 ring-red-200" },
+  FAI: { dot: "bg-indigo-700", ring: "ring-indigo-200", tag: "text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200" },
 };
 
 function MetricRow({ label, now, prev, format = "inr", invert = false }: {

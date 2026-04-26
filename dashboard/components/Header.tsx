@@ -11,9 +11,10 @@ const FOUNDER_NAV = [
   { href: "/",       label: "Overview", icon: LayoutDashboard },
   { href: "/leads",  label: "Leads",    icon: Users },
 ];
+// Sales mode: queue is the primary, only view. /leads remains accessible by URL
+// but we don't surface it in the nav (founder feedback: it was creating noise).
 const SALES_NAV = [
   { href: "/queue",  label: "Daily Queue", icon: Phone },
-  { href: "/leads",  label: "All Leads",   icon: Users },
 ];
 
 export default function Header({ lastSync }: { lastSync?: string }) {

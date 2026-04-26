@@ -61,10 +61,10 @@ const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
 };
 
 const PROGRAM_COLOR: Record<string, string> = {
-  FFM: "text-rose-600",
-  FW:  "text-cyan-600",
-  FC:  "text-lime-600",
-  FAI: "text-amber-600",
+  FFM: "text-yellow-700",
+  FW:  "text-sky-600",
+  FC:  "text-red-600",
+  FAI: "text-indigo-700",
 };
 
 type SortKey = "score" | "last_activity" | "name" | "program" | "stage";

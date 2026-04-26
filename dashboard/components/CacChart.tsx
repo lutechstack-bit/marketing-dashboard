@@ -4,7 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import type { ProgramRollup, AcquisitionRow } from "@/lib/data";
 import { inr } from "@/lib/format";
 
-const COLORS = { FFM: "#EF4444", FW: "#06B6D4", FC: "#84CC16", FAI: "#F59E0B" };
+const COLORS = { FFM: "#EAB308", FW: "#38BDF8", FC: "#EF4444", FAI: "#4338CA" };
 
 export default function CacChart({
   spendTrend, acquisitions,

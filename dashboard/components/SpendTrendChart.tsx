@@ -4,7 +4,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import type { ProgramRollup } from "@/lib/data";
 import { inr } from "@/lib/format";
 
-const COLORS = { FFM: "#EF4444", FW: "#06B6D4", FC: "#84CC16", FAI: "#F59E0B" };
+const COLORS = { FFM: "#EAB308", FW: "#38BDF8", FC: "#EF4444", FAI: "#4338CA" };
 
 export default function SpendTrendChart({ data }: { data: ProgramRollup[] }) {
   const recent = data.slice(-18);

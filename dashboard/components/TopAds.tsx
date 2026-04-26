@@ -2,10 +2,10 @@ import { AdPerf } from "@/lib/data";
 import { inr, pct, fmtInt } from "@/lib/format";
 
 const PROG_TAG: Record<string, string> = {
-  FFM: "text-rose-700 bg-rose-50 ring-1 ring-rose-200",
-  FW:  "text-cyan-700 bg-cyan-50 ring-1 ring-cyan-200",
-  FC:  "text-lime-700 bg-lime-50 ring-1 ring-lime-200",
-  FAI: "text-amber-700 bg-amber-50 ring-1 ring-amber-200",
+  FFM: "text-yellow-800 bg-yellow-50 ring-1 ring-yellow-200",
+  FW:  "text-sky-700 bg-sky-50 ring-1 ring-sky-200",
+  FC:  "text-red-700 bg-red-50 ring-1 ring-red-200",
+  FAI: "text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200",
 };
 
 export default function TopAds({ ads }: { ads: AdPerf[] }) {

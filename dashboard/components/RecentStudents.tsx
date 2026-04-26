@@ -1,10 +1,10 @@
 import { inr, fmtDate } from "@/lib/format";
 
 const PROGRAM_LABEL: Record<string, { name: string; color: string }> = {
-  FFM: { name: "Filmmaking", color: "text-rose-700 bg-rose-50 ring-1 ring-rose-200" },
-  FW:  { name: "Writing",    color: "text-cyan-700 bg-cyan-50 ring-1 ring-cyan-200" },
-  FC:  { name: "Creators",   color: "text-lime-700 bg-lime-50 ring-1 ring-lime-200" },
-  FAI: { name: "AI",         color: "text-amber-700 bg-amber-50 ring-1 ring-amber-200" },
+  FFM: { name: "Filmmaking", color: "text-yellow-800 bg-yellow-50 ring-1 ring-yellow-200" },
+  FW:  { name: "Writing",    color: "text-sky-700 bg-sky-50 ring-1 ring-sky-200" },
+  FC:  { name: "Creators",   color: "text-red-700 bg-red-50 ring-1 ring-red-200" },
+  FAI: { name: "AI",         color: "text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200" },
 };
 
 export default function RecentStudents({ master }: { master: any[] }) {
