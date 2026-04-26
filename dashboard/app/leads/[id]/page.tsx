@@ -6,20 +6,22 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const detail = await getLeadDetail(id);
 
-  // Look up Calendly bookings by this lead's email
+  // Look up Calendly bookings for this lead's email — tighter 60d window
+  // since lead-detail page loads on every click and shouldn't drag.
   let bookings: any[] = [];
   if (detail.lead?.email) {
     try {
-      const all = await fetchBookings(180); // 6 months back for lead detail
+      const all = await fetchBookings(60);
       const idx = indexByEmail(all);
       bookings = idx[detail.lead.email.toLowerCase()] || [];
     } catch (e: any) {
-      console.error("Calendly fetch failed:", e?.message);
+      console.error("[lead-detail] Calendly fetch failed:", e?.message);
     }
   }
 
