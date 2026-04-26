@@ -17,6 +17,7 @@ import {
 } from "@/lib/products";
 import type { InsightsPayload, ProductInsight } from "@/lib/insights-server";
 import { inr, fmtInt } from "@/lib/format";
+import ManualSpendForm from "./ManualSpendForm";
 
 const PROD_HEX: Record<string, string> = {
   FFM: "#EAB308", FW: "#38BDF8", FC: "#EF4444", FAI: "#4338CA",
@@ -198,11 +199,17 @@ export default function InsightsClient({ insights }: { insights: InsightsPayload
       <SectionHeader icon={<Phone className="w-4 h-4" />} title="Sales rep performance" subtitle={`From dashboard activity · ${insights.period.label}`} />
       <RepTable reps={insights.reps} />
 
+      {/* Manual marketing spend (YouTube collabs, etc.) */}
+      <SectionHeader icon={<Wallet className="w-4 h-4" />} title="Manual marketing spend" subtitle="YouTube collabs · influencer fees · agency · anything not auto-pulled from APIs" />
+      <div className="mb-6">
+        <ManualSpendForm />
+      </div>
+
       {/* Coming next */}
       <SectionHeader icon={<Wallet className="w-4 h-4" />} title="Coming next" subtitle="Need data hooks before I can wire these" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
-        <ComingSoonCard title="YouTube collaboration ad spend" desc="UI to add collabs (creator, fee, date, program). Saves to a manual_marketing_spend table — needs a one-time SQL paste in Supabase to create the table. Tell me when to ship." />
         <ComingSoonCard title="EOD report integration" desc="Productive minutes · interview calls · abandoned-leads dialed · daily HOTS list. Need: where reps submit EOD (Sheets / Slack / Tally?)." />
+        <ComingSoonCard title="Roll manual spend into Marketing Efficiency totals" desc="Currently shown separately above. Once you confirm the formula (add to Meta spend? separate channel line?), I merge into the 12-month chart." />
       </div>
     </div>
   );
