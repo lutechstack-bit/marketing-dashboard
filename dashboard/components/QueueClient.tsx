@@ -87,11 +87,20 @@ function bucketFor(l: LeadRow): Bucket | null {
   }
 }
 
-export default function QueueClient({ initialLeads }: { initialLeads: LeadRow[] }) {
+type QueueClientProps = {
+  initialLeads: LeadRow[];
+  bookedEmails: string[];      // emails (lowercased) with an ACTIVE Calendly booking
+  calendlyConnected: boolean;  // false if Calendly fetch failed or token missing
+};
+
+export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected }: QueueClientProps) {
   const [product, setProduct] = useState<string>("FFM");
   const [rep, setRep] = useState<string | null>(null);
   const [partialsOpen, setPartialsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Set of booked emails for O(1) lookup
+  const bookedSet = useMemo(() => new Set(bookedEmails), [bookedEmails]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -122,14 +131,20 @@ export default function QueueClient({ initialLeads }: { initialLeads: LeadRow[] 
     return xs;
   }, [initialLeads, product, rep]);
 
-  // Bucket each lead
+  // Bucket each lead — using Calendly bookings to refine bucket B
+  // (paid app fee but didn't book interview = NOT in bookedSet)
   const buckets = useMemo(() => {
     const out: Record<Bucket, LeadRow[]> = { no_app_fee: [], no_interview: [], partials: [] };
     for (const l of productLeads) {
       const b = bucketFor(l);
-      if (b) out[b].push(l);
+      if (!b) continue;
+      // Skip bucket B leads who already booked a Calendly interview
+      if (b === "no_interview" && calendlyConnected) {
+        const email = (l.email || "").toLowerCase();
+        if (email && bookedSet.has(email)) continue;
+      }
+      out[b].push(l);
     }
-    // Within each bucket, rank by score then recency
     for (const k of Object.keys(out) as Bucket[]) {
       out[k].sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -137,7 +152,7 @@ export default function QueueClient({ initialLeads }: { initialLeads: LeadRow[] 
       });
     }
     return out;
-  }, [productLeads]);
+  }, [productLeads, bookedSet, calendlyConnected]);
 
   // Counts across ALL products for the product tab badges
   const productCounts = useMemo(() => {
@@ -207,7 +222,7 @@ export default function QueueClient({ initialLeads }: { initialLeads: LeadRow[] 
           bucket="no_interview"
           leads={buckets.no_interview}
           rank="B"
-          calendlyNote
+          calendlyNote={!calendlyConnected}
         />
         <PartialsSection
           leads={buckets.partials}
@@ -310,7 +325,7 @@ function BucketSection({ bucket, leads, rank, calendlyNote }: {
           </span>
           <span className="text-xs text-fg-muted tabular-nums">{leads.length}</span>
           {calendlyNote && (
-            <span className="text-[10px] text-fg-subtle italic">· approximation until Calendly is wired</span>
+            <span className="text-[10px] text-amber-700 italic">· Calendly disconnected — using time approximation</span>
           )}
         </div>
         {leads.length > visible.length && (

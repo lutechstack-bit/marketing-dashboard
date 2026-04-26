@@ -1,5 +1,6 @@
 import Header from "@/components/Header";
 import { getLeadDetail } from "@/lib/supabase";
+import { fetchBookings, indexByEmail } from "@/lib/calendly";
 import LeadDetailClient from "@/components/LeadDetailClient";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -9,6 +10,18 @@ export const dynamic = "force-dynamic";
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const detail = await getLeadDetail(id);
+
+  // Look up Calendly bookings by this lead's email
+  let bookings: any[] = [];
+  if (detail.lead?.email) {
+    try {
+      const all = await fetchBookings(180); // 6 months back for lead detail
+      const idx = indexByEmail(all);
+      bookings = idx[detail.lead.email.toLowerCase()] || [];
+    } catch (e: any) {
+      console.error("Calendly fetch failed:", e?.message);
+    }
+  }
 
   if (!detail.lead) {
     return (
@@ -34,7 +47,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <Link href="/leads" className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg-text mb-4">
           <ChevronLeft className="w-4 h-4" />Back to leads
         </Link>
-        <LeadDetailClient detail={detail} />
+        <LeadDetailClient detail={detail} calendlyBookings={bookings} />
       </main>
     </>
   );

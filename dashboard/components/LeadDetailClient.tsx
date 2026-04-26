@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Phone, Mail, MessageCircle, FileText, IndianRupee, Sparkles, ChevronDown, ChevronUp,
-  CheckCircle2, XCircle, PhoneOff, Clock, MessageSquare, Flame, Send,
+  CheckCircle2, XCircle, PhoneOff, Clock, MessageSquare, Flame, Send, Calendar,
 } from "lucide-react";
 import type { LeadRow, FormSubmissionRow, PaymentRow, LeadActivityRow } from "@/lib/supabase";
 import { inr, fmtDate } from "@/lib/format";
 import { suggestTalkingPoints, whyHotReason } from "@/lib/insights";
+import type { CalendlyBooking } from "@/lib/calendly";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
   form_partial:   { label: "Form partial",   cls: "bg-slate-100 text-slate-700 ring-1 ring-slate-200" },
@@ -34,9 +35,10 @@ type Props = {
     payments: PaymentRow[];
     activities: LeadActivityRow[];
   };
+  calendlyBookings?: CalendlyBooking[];
 };
 
-export default function LeadDetailClient({ detail }: Props) {
+export default function LeadDetailClient({ detail, calendlyBookings = [] }: Props) {
   const router = useRouter();
   const [activities, setActivities] = useState<LeadActivityRow[]>(detail.activities);
   const [submitting, setSubmitting] = useState(false);
@@ -54,9 +56,9 @@ export default function LeadDetailClient({ detail }: Props) {
   const why = useMemo(() => whyHotReason(lead), [lead]);
   const talking = useMemo(() => suggestTalkingPoints(lead, detail.submissions), [lead, detail.submissions]);
 
-  // Combined timeline
+  // Combined timeline (form + payment + activity + calendly booking)
   const timeline = useMemo(() => {
-    type Event = { ts: string; type: "form" | "payment" | "activity"; body: any };
+    type Event = { ts: string; type: "form" | "payment" | "activity" | "booking"; body: any };
     const evts: Event[] = [];
     for (const s of detail.submissions) {
       evts.push({ ts: s.submitted_at, type: "form", body: s });
@@ -67,9 +69,14 @@ export default function LeadDetailClient({ detail }: Props) {
     for (const a of activities) {
       evts.push({ ts: a.created_at, type: "activity", body: a });
     }
+    for (const b of calendlyBookings) {
+      evts.push({ ts: b.created_at || b.start_time, type: "booking", body: b });
+    }
     evts.sort((a, b) => b.ts.localeCompare(a.ts));
     return evts;
-  }, [detail.submissions, detail.payments, activities]);
+  }, [detail.submissions, detail.payments, activities, calendlyBookings]);
+
+  const activeBookings = calendlyBookings.filter(b => b.status !== "canceled");
 
   const allResponses = useMemo(() => {
     const merged: Record<string, any> = {};
@@ -115,11 +122,16 @@ export default function LeadDetailClient({ detail }: Props) {
       <div className="surface-card p-6">
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 mb-1.5">
+            <div className="flex items-center gap-3 mb-1.5 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight text-fg-text truncate">
                 {lead.name || <span className="italic text-fg-subtle">No name</span>}
               </h1>
               <span className={`text-xs font-semibold px-2.5 py-1 rounded ${stage.cls}`}>{stage.label}</span>
+              {activeBookings.length > 0 && (
+                <span className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />Interview booked
+                </span>
+              )}
             </div>
             <div className="text-sm text-fg-muted">
               {programName}{lead.source_campaign_name ? ` · from ${lead.source_campaign_name}` : ""}
@@ -350,6 +362,20 @@ function TimelineRow({ event }: { event: { ts: string; type: string; body: any }
     const p = event.body as PaymentRow;
     return (
       <Row icon={<IndianRupee className="w-4 h-4 text-emerald-600"/>} title={`${(p.payment_type || "Payment").replace(/_/g," ")} — ${inr(p.amount_inr)}`} subtitle={`${p.account} account · ${p.status || ""}`} ts={event.ts} ago={ago} />
+    );
+  }
+  if (event.type === "booking") {
+    const b = event.body as CalendlyBooking;
+    const canceled = b.status === "canceled";
+    const startTime = new Date(b.start_time).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+    return (
+      <Row
+        icon={<Calendar className={`w-4 h-4 ${canceled ? "text-rose-600" : "text-emerald-600"}`}/>}
+        title={canceled ? `📅 Booking canceled — ${b.event_name}` : `📅 Booked: ${b.event_name}`}
+        subtitle={`Interview at ${startTime} IST`}
+        ts={event.ts}
+        ago={ago}
+      />
     );
   }
   const a = event.body as LeadActivityRow;
