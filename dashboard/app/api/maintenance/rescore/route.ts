@@ -17,17 +17,18 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "1000"), 5000);
+  const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0"));
   const stagesParam = url.searchParams.get("stages") || "form_submitted,form_partial,accepted";
   const stages = stagesParam.split(",").map(s => s.trim()).filter(Boolean);
 
   try {
-    // 1. Pull leads in target stages
-    const { data: leads, error: lerr } = await supabase
+    // 1. Pull leads in target stages — paginated via offset
+    const { data: leads, error: lerr, count } = await supabase
       .from("leads")
-      .select("id,program,funnel_stage,score")
+      .select("id,program,funnel_stage,score", { count: "exact" })
       .in("funnel_stage", stages)
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     if (lerr) throw lerr;
     const leadIds = (leads || []).map(l => l.id);
     if (leadIds.length === 0) {
@@ -97,12 +98,13 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      scanned: leadIds.length,
+      window: { offset, limit, returned: leadIds.length },
+      total_in_stages: count ?? null,
+      next_offset: leadIds.length === limit ? offset + limit : null,
       with_submissions: withSubs,
       no_submissions: withoutSubs,
       updated,
       score_distribution_after: buckets,
-      stage_movement: distChange,
       sample_top10: updates
         .sort((a, b) => b.score - a.score)
         .slice(0, 10)
