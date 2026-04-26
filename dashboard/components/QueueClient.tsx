@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Phone, MessageCircle, Mail, ChevronRight, CheckCircle2, AlertCircle,
+  Phone, MessageCircle, Mail, ChevronRight, CheckCircle2, AlertCircle, Radio,
 } from "lucide-react";
 import type { LeadRow } from "@/lib/supabase";
 import { whyHotReason } from "@/lib/insights";
@@ -49,10 +50,24 @@ type QueueClientProps = {
 };
 
 export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected }: QueueClientProps) {
+  const router = useRouter();
   const [family, setFamily] = useState<Family>("forge");
   const [product, setProduct] = useState<string>("FFM");
   const [bucket, setBucket] = useState<BucketId>("abandoned");
   const [mounted, setMounted] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  // Auto-refresh every 30s while the tab is visible — picks up new webhook
+  // ingestions without the rep having to manually reload.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        router.refresh();
+        setLastRefresh(new Date());
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [router]);
 
   // Restore + persist user choices
   useEffect(() => {
@@ -143,6 +158,11 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
               <span className="ml-2 text-amber-700 italic">· Calendly disconnected — bucket B uses time approximation</span>
             )}
           </p>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-fg-muted">
+          <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+          <span>Auto-refreshing every 30s</span>
+          <span className="text-fg-subtle hidden md:inline">· last sync {lastRefresh.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
         </div>
       </div>
 
