@@ -1,7 +1,12 @@
 // Calendly client — fetches recent scheduled events + their invitees,
 // indexes by lowercase invitee email so we can answer "did this lead book an interview?"
 //
+// Caching strategy: Next.js unstable_cache wraps the fetch so first load takes
+// ~10s but subsequent loads within 5 min are instant. Stale-while-revalidate.
+//
 // API docs: https://developer.calendly.com/api-docs/
+
+import { unstable_cache } from "next/cache";
 
 const CAL_API = "https://api.calendly.com";
 const TOKEN = process.env.CALENDLY_TOKEN || "";
@@ -47,9 +52,21 @@ async function calGet(path: string): Promise<any> {
 }
 
 /**
+ * Cached bookings fetch — 5-min TTL. Use this from server components.
+ * First page load: ~10s. Subsequent loads: <100ms (cache hit).
+ */
+export const fetchBookingsCached = unstable_cache(
+  async (daysBack: number = 45) => fetchBookings(daysBack),
+  ["calendly-bookings"],
+  { revalidate: 300, tags: ["calendly"] },
+);
+
+/**
  * Fetch all bookings for the org, going back N days from now (default 90).
  * Includes both upcoming and past events with status=active OR canceled.
  * Returns flat list of bookings (one per invitee).
+ *
+ * Use fetchBookingsCached() in server components for caching.
  */
 export async function fetchBookings(daysBack = 90, hardCap = 1500): Promise<CalendlyBooking[]> {
   if (!TOKEN || !ORG_URI) return []; // graceful no-op if env not set

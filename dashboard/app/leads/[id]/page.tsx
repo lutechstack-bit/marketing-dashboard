@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
 import { getLeadDetail } from "@/lib/supabase";
-import { fetchBookings, indexByEmail } from "@/lib/calendly";
+import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import LeadDetailClient from "@/components/LeadDetailClient";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -17,7 +17,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   let bookings: any[] = [];
   if (detail.lead?.email) {
     try {
-      const all = await fetchBookings(60);
+      const all = await fetchBookingsCached(60);
       const idx = indexByEmail(all);
       bookings = idx[detail.lead.email.toLowerCase()] || [];
     } catch (e: any) {

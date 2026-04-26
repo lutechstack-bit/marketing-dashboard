@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
 import { fetchLeads } from "@/lib/supabase";
-import { fetchBookings, indexByEmail } from "@/lib/calendly";
+import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import QueueClient from "@/components/QueueClient";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export default async function QueuePage() {
   // Calendly window kept tight (45 days) so the page load stays under ~8s.
   const [leads, bookings] = await Promise.all([
     fetchLeads({ limit: 1500 }),
-    fetchBookings(45).catch((e) => {
+    fetchBookingsCached(45).catch((e) => {
       console.error("[queue] Calendly fetch failed:", e?.message, e?.stack?.split("\n")[0]);
       return [];
     }),
