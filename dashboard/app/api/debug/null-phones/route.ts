@@ -14,10 +14,17 @@ export async function GET(req: Request) {
   // Count NULL-phone leads (paginate via head:true count)
   const totalRes = await supabase.from("leads").select("*", { count: "exact", head: true });
   const nullRes = await supabase.from("leads").select("*", { count: "exact", head: true }).is("phone", null);
-  const nullWithSubsRes = await supabase.from("leads")
-    .select("id", { count: "exact", head: false })
-    .is("phone", null)
-    .limit(0); // just count
+
+  // Per-program breakdown of NULL-phone leads
+  const programs = ["FFM", "FW", "FC", "FAI", "VE", "BFP", "L3C"];
+  const byProgram: Record<string, number> = {};
+  await Promise.all(programs.map(async (p) => {
+    const r = await supabase.from("leads").select("*", { count: "exact", head: true }).is("phone", null).eq("program", p);
+    byProgram[p] = r.count || 0;
+  }));
+  // Also count leads with no program
+  const noProgram = await supabase.from("leads").select("*", { count: "exact", head: true }).is("phone", null).is("program", null);
+  byProgram["NULL"] = noProgram.count || 0;
 
   // Get sample of NULL-phone leads with their submissions
   const { data: nullLeads } = await supabase.from("leads")
@@ -70,6 +77,7 @@ export async function GET(req: Request) {
       total_leads: totalRes.count,
       null_phone_leads: nullRes.count,
       pct_null: totalRes.count ? Math.round(1000 * (nullRes.count || 0) / totalRes.count) / 10 : 0,
+      by_program: byProgram,
     },
     samples,
   });
