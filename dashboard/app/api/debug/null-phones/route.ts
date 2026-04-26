@@ -34,29 +34,34 @@ export async function GET(req: Request) {
       .limit(2);
     samples.push({
       lead: { id: lead.id, name: lead.name, email: lead.email, program: lead.program },
-      submissions: (subs || []).map(s => ({
-        form_id: s.form_id,
-        submitted_at: s.submitted_at,
-        // Show response keys (without spammy values)
-        response_keys: Object.keys(s.responses || {}),
-        // Show keys that COULD be phones (any field with digits in the value)
-        phone_candidate_keys: Object.entries(s.responses || {})
-          .filter(([_k, v]) => {
+      submissions: (subs || []).map(s => {
+        // Show actual values for phone-related keys (even if empty)
+        const phoneRelatedEntries = Object.entries(s.responses || {})
+          .filter(([k]) => /phone|mobile|whatsapp|contact|cell|number/i.test(k))
+          .map(([k, v]) => ({
+            key: k,
+            value_type: typeof v,
+            is_array: Array.isArray(v),
+            value_raw: v,
+            value_str: String(Array.isArray(v) ? v.join(", ") : (v ?? "")),
+          }));
+        // Find ANY value across all responses that looks phone-like
+        const phoneShapedValues = Object.entries(s.responses || {})
+          .map(([k, v]) => {
             const s = Array.isArray(v) ? v.join(" ") : String(v ?? "");
             const digits = s.replace(/\D/g, "");
-            return digits.length >= 8;
+            return { key: k, digits_count: digits.length, value_preview: s.slice(0, 60), digit_preview: digits.slice(0, 15) };
           })
-          .map(([k, v]) => ({ key: k, value_preview: String(Array.isArray(v) ? v.join(", ") : (v ?? "")).slice(0, 60) })),
-        // Show raw fields[] structure if present
-        raw_fields_summary: Array.isArray(s.raw?.data?.fields) ? s.raw.data.fields.slice(0, 30).map((f: any) => ({
-          type: f.type,
-          label: (f.label || "").slice(0, 60),
-          key: f.key,
-          value_preview: typeof f.value === "string" ? f.value.slice(0, 60) :
-            Array.isArray(f.value) ? f.value.join(", ").slice(0, 60) :
-            String(f.value ?? "").slice(0, 60),
-        })) : null,
-      })),
+          .filter(x => x.digits_count >= 8 && x.digits_count <= 15);
+        return {
+          form_id: s.form_id,
+          submitted_at: s.submitted_at,
+          response_keys: Object.keys(s.responses || {}),
+          phone_related_entries: phoneRelatedEntries,
+          phone_shaped_values: phoneShapedValues,
+          has_raw_fields: Array.isArray(s.raw?.data?.fields),
+        };
+      }),
     });
   }
 
