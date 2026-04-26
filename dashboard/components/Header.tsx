@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LineChart, Users, Phone, LayoutDashboard } from "lucide-react";
+import { LineChart, Users, Phone, LayoutDashboard, Sparkles } from "lucide-react";
 
 type Role = "founder" | "sales";
 
 const FOUNDER_NAV = [
-  { href: "/",       label: "Overview", icon: LayoutDashboard },
-  { href: "/leads",  label: "Leads",    icon: Users },
+  { href: "/",         label: "Overview", icon: LayoutDashboard },
+  { href: "/insights", label: "Insights", icon: Sparkles },
+  { href: "/leads",    label: "Leads",    icon: Users },
 ];
 // Sales mode: queue is the primary, only view. /leads remains accessible by URL
 // but we don't surface it in the nav (founder feedback: it was creating noise).
