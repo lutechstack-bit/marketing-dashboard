@@ -1,16 +1,24 @@
 import Header from "@/components/Header";
-import { fetchLeads, supabase } from "@/lib/supabase";
+import { fetchLeadsLight, supabase } from "@/lib/supabase";
 import { loadAll } from "@/lib/data";
+import { buildInsights } from "@/lib/insights-server";
 import InsightsClient from "@/components/InsightsClient";
+import type { Family } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 60;
 
-export default async function InsightsPage() {
-  // Pull leads, marketing data, payments, and rep activities in parallel
+export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ [k: string]: string | string[] | undefined }> }) {
+  const params = await searchParams;
+  const family = (params.family === "live" ? "live" : "forge") as Family;
+  const periodId = (params.period as string) || "30d";
+  const customStart = params.start as string | undefined;
+  const customEnd = params.end as string | undefined;
+
+  // Parallel fetch — leads (lightweight, no joins), payments, activities, sheet
   const [leads, sheetData, paymentsRes, activitiesRes] = await Promise.all([
-    fetchLeads({ limit: 10000 }),
+    fetchLeadsLight({ limit: 10000 }),
     loadAll().catch((e) => {
       console.error("[insights] sheet load failed:", e?.message);
       return null;
@@ -28,20 +36,20 @@ export default async function InsightsPage() {
       .limit(5000),
   ]);
 
-  const payments = (paymentsRes.data || []) as any[];
-  const activities = (activitiesRes.data || []) as any[];
+  // Aggregate server-side — client receives small JSON
+  const insights = buildInsights({
+    leads,
+    payments: (paymentsRes.data || []) as any[],
+    activities: (activitiesRes.data || []) as any[],
+    marketingMonthly: sheetData?.monthly || [],
+    family, periodId, customStart, customEnd,
+  });
 
   return (
     <>
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
-        <InsightsClient
-          initialLeads={leads}
-          payments={payments}
-          activities={activities}
-          marketingMonthly={sheetData?.monthly || []}
-          marketingDaily={sheetData?.spendTrend || []}
-        />
+        <InsightsClient insights={insights} />
       </main>
     </>
   );
