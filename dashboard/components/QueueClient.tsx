@@ -514,12 +514,15 @@ function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; ran
 }
 
 function ScoreBadge({ score, breakdown }: { score: number; breakdown?: Record<string, number> }) {
-  // Recalibrated thresholds (founder feedback): scores feel low because most leads
-  // sit at form_submitted, capping funnel pts at 12/35. Lowering Hot to 50 below.
+  // Tiers tuned to the new data-driven scoring (lib/scoring.ts):
+  //   70+ super hot — top 5-10% — convert at 25-50%
+  //   50-69 hot     — next ~15% — convert at 10-20%
+  //   30-49 warm    — next ~30% — convert at 3-8%
+  //   <30 cold      — bottom ~50% — convert at <2%
   let cls;
-  if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";  // super hot
+  if (score >= 70)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";  // super hot
   else if (score >= 50) cls = "bg-emerald-500 text-white shadow-sm";                     // hot
-  else if (score >= 25) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";          // warm
+  else if (score >= 30) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";          // warm
   else                  cls = "bg-slate-100 text-slate-500 ring-1 ring-slate-200";       // cold
 
   const tooltip = breakdown && Object.keys(breakdown).length > 0
