@@ -1,5 +1,6 @@
 import Header from "@/components/Header";
 import { getLeadDetail } from "@/lib/supabase";
+import { getCurrentRep } from "@/lib/auth/supabase-server";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import LeadDetailClient from "@/components/LeadDetailClient";
 import Link from "next/link";
@@ -10,7 +11,10 @@ export const maxDuration = 60;
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = await getLeadDetail(id);
+  const [detail, currentRep] = await Promise.all([
+    getLeadDetail(id),
+    getCurrentRep(),
+  ]);
 
   // Calendly bookings server-side (cached 30 min — usually fast).
   // AI brief is now deferred to a client-side fetch so the page renders instantly.
@@ -48,7 +52,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <Link href="/leads" className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg-text mb-4">
           <ChevronLeft className="w-4 h-4" />Back to leads
         </Link>
-        <LeadDetailClient detail={detail} calendlyBookings={bookings} />
+        <LeadDetailClient
+          detail={detail}
+          calendlyBookings={bookings}
+          currentRepName={currentRep?.full_name || currentRep?.email?.split("@")[0] || null}
+        />
       </main>
     </>
   );

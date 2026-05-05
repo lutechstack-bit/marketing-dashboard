@@ -29,8 +29,6 @@ const PROGRAM_NAME: Record<string, string> = {
   BFP: "Business Foundations", VE: "Venture Engine", L3C: "L3 Creators",
 };
 
-const REPS = ["Pranaush", "Sashank", "Wilson"];
-
 type Props = {
   detail: {
     lead: LeadRow;
@@ -39,17 +37,16 @@ type Props = {
     activities: LeadActivityRow[];
   };
   calendlyBookings?: CalendlyBooking[];
+  /** Auto-detected from the logged-in session — replaces the old manual dropdown. */
+  currentRepName?: string | null;
 };
 
-export default function LeadDetailClient({ detail, calendlyBookings = [] }: Props) {
+export default function LeadDetailClient({ detail, calendlyBookings = [], currentRepName }: Props) {
   const router = useRouter();
   const [activities, setActivities] = useState<LeadActivityRow[]>(detail.activities);
   const [submitting, setSubmitting] = useState(false);
   const [noteText, setNoteText] = useState("");
-  const [repName, setRepName] = useState<string>(() => {
-    if (typeof window === "undefined") return "Pranaush";
-    return localStorage.getItem("levelup-current-rep") || "Pranaush";
-  });
+  const repName = currentRepName || "Unknown";
   const [responsesOpen, setResponsesOpen] = useState(true); // OPEN by default per founder feedback
 
   // Deferred AI brief — fetches client-side after page render so page loads fast
@@ -106,7 +103,6 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
     if (submitting) return;
     setSubmitting(true);
     try {
-      localStorage.setItem("levelup-current-rep", repName);
       const r = await fetch("/api/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,16 +176,12 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
               <span className="text-xs text-fg-muted">Status</span>
               <StatusDropdown leadId={lead.id} initialStatus={lead.last_action} repName={repName} />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-fg-muted">Logging as</span>
-              <select
-                value={repName}
-                onChange={e => { setRepName(e.target.value); localStorage.setItem("levelup-current-rep", e.target.value); }}
-                className="text-sm px-2 py-1 rounded-md border border-fg-border bg-white text-fg-text focus:border-forge-yellow focus:outline-none"
-              >
-                {REPS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
+            {/* Logged-in rep — auto-detected from session, no manual dropdown */}
+            {currentRepName && (
+              <div className="text-xs text-fg-muted">
+                logging as <span className="font-semibold text-forge-black">{currentRepName}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

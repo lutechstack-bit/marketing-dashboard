@@ -10,12 +10,8 @@ import {
   Flame, ChevronRight,
 } from "lucide-react";
 
-const PROGRAMS = ["FFM", "FW", "FC", "FAI"];
-const REPS = [
-  { name: "Pranaush", programs: ["FFM","FW"]   },
-  { name: "Sashank",  programs: ["FC","BFP"]   },
-  { name: "Wilson",   programs: ["VE","L3C"]   },
-];
+const PROGRAMS = ["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"];
+type Rep = { name: string; programs: string[] };
 
 // Date filter presets — written as "last N hours / days"
 const DATE_PRESETS: { id: string; label: string; hours: number | null }[] = [
@@ -85,7 +81,8 @@ function timeAgo(iso?: string | null): string {
   return `${Math.floor(sec/(30*86400))}mo`;
 }
 
-export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] }) {
+export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads: LeadRow[]; reps?: Rep[] }) {
+  const REPS = reps;
   const params = useSearchParams();
 
   // Filters — seeded from URL params (so founder-dashboard drill-downs land pre-filtered)

@@ -1,4 +1,4 @@
-import { fetchLeadStats, fetchLeads } from "@/lib/supabase";
+import { fetchLeadStats, fetchLeads, supabase } from "@/lib/supabase";
 import Header from "@/components/Header";
 import LeadsClient from "@/components/LeadsClient";
 import { Flame, TrendingUp, Users } from "lucide-react";
@@ -8,10 +8,24 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage() {
   // Only enrich what /leads actually displays: payment count + last_action.
   // form_submissions enrichment was wasteful here — leads.first_seen is fine.
-  const [stats, leads] = await Promise.all([
+  // reps + their assignments power the per-rep filter chip in LeadsClient
+  // (was previously hardcoded for Pranaush/Sashank/Wilson).
+  const [stats, leads, repsRes, assignmentsRes] = await Promise.all([
     fetchLeadStats(),
     fetchLeads({ limit: 2000, enrichments: ["payments", "activities"] }),
+    supabase.from("sales_reps").select("id,full_name,email").eq("active", true).eq("role", "sales"),
+    supabase.from("rep_assignments").select("rep_id,product_code").eq("active", true),
   ]);
+
+  const reps = (repsRes.data || []).map((r: any) => {
+    const programs = (assignmentsRes.data || [])
+      .filter((a: any) => a.rep_id === r.id)
+      .map((a: any) => a.product_code);
+    return {
+      name: r.full_name || r.email.split("@")[0],
+      programs: Array.from(new Set(programs)),
+    };
+  });
 
   return (
     <>
@@ -31,7 +45,7 @@ export default async function LeadsPage() {
           </div>
         </div>
 
-        <LeadsClient initialLeads={leads} />
+        <LeadsClient initialLeads={leads} reps={reps} />
       </main>
     </>
   );
