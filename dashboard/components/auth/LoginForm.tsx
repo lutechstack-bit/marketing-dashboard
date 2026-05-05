@@ -23,6 +23,9 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
     e.preventDefault();
     setSubmitting(true); setError(null);
     try {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        throw new Error("Auth setup incomplete — admin needs to finish configuring Supabase Auth.");
+      }
       const sb = createSupabaseBrowserClient();
       const { error: err } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (err) throw err;

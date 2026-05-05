@@ -4,7 +4,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+export function isAuthConfigured(): boolean {
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
 export async function createSupabaseServerClient() {
+  if (!isAuthConfigured()) {
+    throw new Error("Auth not configured — NEXT_PUBLIC_SUPABASE_ANON_KEY missing");
+  }
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,13 +44,18 @@ export async function getCurrentRep(): Promise<{
   role: "sales" | "founder" | "admin";
   active: boolean;
 } | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: rep } = await supabase
-    .from("sales_reps")
-    .select("id,email,full_name,role,active")
-    .eq("id", user.id)
-    .maybeSingle();
-  return rep as any;
+  if (!isAuthConfigured()) return null; // pre-bootstrap state
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: rep } = await supabase
+      .from("sales_reps")
+      .select("id,email,full_name,role,active")
+      .eq("id", user.id)
+      .maybeSingle();
+    return rep as any;
+  } catch {
+    return null;
+  }
 }

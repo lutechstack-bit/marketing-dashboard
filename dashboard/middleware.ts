@@ -30,6 +30,12 @@ export async function middleware(req: NextRequest) {
   let response = NextResponse.next({ request: req });
   const pathname = req.nextUrl.pathname;
 
+  // If auth env vars aren't configured yet, run as if there's no auth gate.
+  // This keeps the site functional until the operator finishes setup.
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return response;
+  }
+
   if (isPublic(pathname)) return response;
 
   // Build a Supabase client wired to the response cookies so session refresh persists
