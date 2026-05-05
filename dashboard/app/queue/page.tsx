@@ -20,9 +20,12 @@ export default async function QueuePage() {
   // (fetchQueueCounts) so the program tabs show the truth, not just what's
   // in the loaded slice.
   const [leads, queueCounts, bookings, earningsRes] = await Promise.all([
+    // Top 5000 actionable leads by most-recent activity, across the THREE
+    // queue buckets (partial / submitted / app_fee_paid). 'accepted' and
+    // beyond don't belong in the queue. Combined with caching this is fast.
     fetchLeads({
-      limit: 2500,
-      stages: ["form_partial", "form_submitted", "app_fee_paid", "accepted"],
+      limit: 5000,
+      stages: ["form_partial", "form_submitted", "app_fee_paid"],
       enrichments: ["activities"],
       sort: "recent",
     }),

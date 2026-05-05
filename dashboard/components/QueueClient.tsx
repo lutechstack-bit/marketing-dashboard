@@ -39,12 +39,17 @@ function fmtSubmitted(iso?: string | null): string {
   const d = new Date(iso);
   return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
+// Bucket definitions, per founder spec:
+//   Partials       — form_partial    (started form, never finished)
+//   Abandoned      — form_submitted  (filled form fully, no app fee paid)
+//   Need to book   — app_fee_paid    (paid app fee, interview not yet done)
+// Anything past app_fee_paid (accepted, confirmed, balance_paid, attended)
+// has had its call work done and isn't in the call queue.
 function bucketFor(l: LeadRow): BucketId | null {
   switch (l.funnel_stage) {
-    case "form_submitted": return "abandoned";
-    case "accepted":       return "need_to_book";
-    case "app_fee_paid":   return "need_to_book";
     case "form_partial":   return "partials";
+    case "form_submitted": return "abandoned";
+    case "app_fee_paid":   return "need_to_book";
     default: return null;
   }
 }
@@ -173,8 +178,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
         const t = totalCounts[p.code] || {};
         c[p.code] = {
           abandoned:    t.form_submitted || 0,
-          // need_to_book = app_fee_paid + accepted minus calendar-booked emails
-          need_to_book: (t.app_fee_paid || 0) + (t.accepted || 0),
+          need_to_book: t.app_fee_paid || 0, // ONLY app_fee_paid — paid but interview not done
           partials:     t.form_partial || 0,
         };
       }
@@ -254,30 +258,51 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       {/* Product tabs */}
       <ProductTabs family={family} current={product} counts={productCounts} onChange={setProductP} />
 
-      {/* Today's Focus banner */}
+      {/* Real per-program-per-bucket totals from DB aggregate. The loaded
+          slice may be smaller than these (we cap at 2,500 leads sorted by
+          recency) but the badges always show the DB truth. */}
+      {(() => null)()}
+
+      {/* Today's Focus banner — uses DB totals so "418 awaiting app fee"
+          reflects all paid-but-not-booked leads, not just what's loaded. */}
       {mounted && (
         <FocusBanner
           productName={productMeta?.longName || product}
           newLastHour={focus.newLastHour}
           new24h={focus.new24h}
           oldestHotHours={focus.oldestHotInQueue}
-          totalAbandoned={bucketed.abandoned.length}
-          totalNeedBook={bucketed.need_to_book.length}
+          totalAbandoned={productCounts[product]?.abandoned ?? 0}
+          totalNeedBook={productCounts[product]?.need_to_book ?? 0}
         />
       )}
 
-      {/* Bucket toggles + column settings */}
+      {/* Bucket toggles + column settings — counts come from DB aggregate
+          so they match the program-tab badges above. */}
       <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
         <BucketTabs current={bucket} counts={{
-          abandoned:    bucketed.abandoned.length,
-          need_to_book: bucketed.need_to_book.length,
-          partials:     bucketed.partials.length,
+          abandoned:    productCounts[product]?.abandoned    ?? 0,
+          need_to_book: productCounts[product]?.need_to_book ?? 0,
+          partials:     productCounts[product]?.partials     ?? 0,
         }} onChange={setBucketP} />
         {mounted && <ColumnSettings visible={visibleCols} onChange={setVisibleCols} />}
       </div>
 
-      {/* Active bucket description */}
-      <p className="text-xs text-fg-muted mt-3 mb-4">{BUCKETS[bucket].description}</p>
+      {/* Active bucket description + visibility note */}
+      {(() => {
+        const totalForBucket = productCounts[product]?.[bucket] ?? 0;
+        const loadedForBucket = visible.length;
+        const truncated = loadedForBucket < totalForBucket;
+        return (
+          <div className="mt-3 mb-4">
+            <p className="text-xs text-fg-muted">{BUCKETS[bucket].description}</p>
+            {truncated && (
+              <p className="text-[11px] text-fg-subtle mt-1">
+                Showing the {loadedForBucket.toLocaleString()} most recent · {(totalForBucket - loadedForBucket).toLocaleString()} more in DB. Refine by program or score above.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* List */}
       <LeadsList leads={visible} bucketId={bucket} family={family} visibleCols={visibleCols} earningsByLead={earningsByLead} />
