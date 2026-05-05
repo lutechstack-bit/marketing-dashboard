@@ -165,13 +165,26 @@ export async function GET(req: Request) {
       }
     }
 
+    // 4. ALWAYS generate a fresh recovery link with the current site URL.
+    // (Previous run's links had wrong redirect_to because Supabase Site URL was localhost.)
+    let recoveryLink: string | null = null;
+    try {
+      const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: `${siteUrl}/auth/reset-password` },
+      });
+      if (!linkErr) recoveryLink = linkData?.properties?.action_link ?? null;
+    } catch { /* non-fatal */ }
+
     results.push({
       email,
       status: inviteStatus,
       role: u.role,
       user_id: userId,
       assignments_created: assignmentsCreated,
-      ...(inviteLink ? { invite_link: inviteLink } : {}),
+      ...(inviteLink ? { invite_link_initial: inviteLink } : {}),
+      ...(recoveryLink ? { set_password_link: recoveryLink } : {}),
     });
   }
 
