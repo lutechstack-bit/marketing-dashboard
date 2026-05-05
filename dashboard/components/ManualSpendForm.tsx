@@ -144,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_manual_spend_program ON manual_marketing_spend(pr
           <p className="text-xs text-fg-muted mt-0.5">{rows.length} entries · total {inr(total, { compact: true })}</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-fg-text text-white hover:bg-slate-700">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-forge-yellow text-forge-black hover:bg-forge-orange">
           {showForm ? <X className="w-3.5 h-3.5"/> : <Plus className="w-3.5 h-3.5"/>}
           {showForm ? "Cancel" : "Add spend"}
         </button>

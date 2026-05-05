@@ -293,7 +293,7 @@ function ProductTabs({ family, current, counts, onChange }: {
               <span className="flex items-center gap-1 text-[11px] tabular-nums">
                 <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title="Abandoned (form complete, no app fee)">{c.abandoned}</span>
                 <span className="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800" title="Need to book interview">{c.need_to_book}</span>
-                <span className={`px-1.5 py-0.5 rounded bg-slate-100 ${isActive ? "text-slate-700" : "text-slate-500"}`} title="Partials">{c.partials}</span>
+                <span className={`px-1.5 py-0.5 rounded bg-fg-surface ${isActive ? "text-fg-text" : "text-fg-muted"}`} title="Partials">{c.partials}</span>
               </span>
             </button>
           );
@@ -560,14 +560,14 @@ function ScoreBadge({ score, breakdown }: { score: number; breakdown?: Record<st
   //   75-90 🔥 HOT   — convert ~21% — bg-amber-500
   //   60-74 ⚡ WARM  — convert ~10% — bg-emerald-500
   //   45-59  OK     — convert ~3%  — bg-cyan-100
-  //   30-44  COLD   — convert ~1%  — bg-slate-100
-  //   <30   ❄ JUNK  — skip          — bg-slate-50 muted
+  //   30-44  COLD   — convert ~1%  — bg-fg-surface
+  //   <30   ❄ JUNK  — skip          — bg-fg-surface muted
   let cls;
   if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";
   else if (score >= 60) cls = "bg-emerald-500 text-white shadow-sm";
   else if (score >= 45) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";
-  else if (score >= 30) cls = "bg-slate-100 text-slate-700 ring-1 ring-slate-300";
-  else                  cls = "bg-slate-50 text-slate-400 ring-1 ring-slate-200";
+  else if (score >= 30) cls = "bg-fg-surface text-fg-text ring-1 ring-fg-border";
+  else                  cls = "bg-fg-surface text-fg-subtle ring-1 ring-fg-border";
 
   const tooltip = breakdown && Object.keys(breakdown).length > 0
     ? Object.entries(breakdown).filter(([_, v]) => Number(v) > 0).map(([k, v]) => `${k.replace(/_/g, " ")}: +${v}`).join(" · ")

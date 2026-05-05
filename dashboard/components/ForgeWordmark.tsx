@@ -1,20 +1,36 @@
-// Brand wordmark — "the Forge" in Playfair Display (Migra alternative)
-// Used in the header and login screen.
+// Brand wordmark — "LevelUp Learning · Sales Intelligence Dashboard".
+// "LevelUp" is set in Playfair Display italic (the Forge brand display face);
+// the rest is Open Sauce Sans for clean balance. The wordmark is theme-aware
+// because it uses semantic color tokens (text-forge-black flips on dark).
+//
+// Sizes:
+//   sm — header, compact
+//   md — default
+//   lg — login / hero
+//
+// `subtitle` defaults to "Sales Intelligence Dashboard" but can be overridden
+// or hidden with `subtitle=""`.
 
-export default function ForgeWordmark({ size = "md", subtitle = "by LevelUp Learning" }: { size?: "sm" | "md" | "lg"; subtitle?: string }) {
+export default function ForgeWordmark({
+  size = "md",
+  subtitle = "Sales Intelligence Dashboard",
+}: { size?: "sm" | "md" | "lg"; subtitle?: string }) {
   const sizes = {
-    sm: { the: "text-xs", forge: "text-base", subtitle: "text-[9px]" },
-    md: { the: "text-sm", forge: "text-xl",   subtitle: "text-[10px]" },
-    lg: { the: "text-base",forge: "text-3xl",  subtitle: "text-[11px]" },
+    sm: { brand: "text-base",  level: "text-sm",   subtitle: "text-[9px]" },
+    md: { brand: "text-xl",    level: "text-lg",   subtitle: "text-[10px]" },
+    lg: { brand: "text-3xl",   level: "text-2xl",  subtitle: "text-[11px]" },
   }[size];
+
   return (
-    <div className="inline-flex items-baseline gap-1.5">
-      <div className="flex flex-col items-end leading-none">
-        <span className={`${sizes.the} text-forge-black/80 font-medium leading-tight`}>the</span>
-        <span className={`${sizes.forge} font-display font-extrabold italic text-forge-black leading-none -mt-0.5`}>Forge</span>
+    <div className="inline-flex flex-col items-start leading-tight">
+      <div className="flex items-baseline gap-1.5">
+        <span className={`font-display font-extrabold italic text-forge-black ${sizes.brand} leading-none`}>LevelUp</span>
+        <span className={`font-semibold text-forge-black ${sizes.level} leading-none`}>Learning</span>
       </div>
       {subtitle && (
-        <span className={`${sizes.subtitle} text-forge-black/55 uppercase tracking-[0.18em] font-semibold ml-1 self-end pb-1`}>{subtitle}</span>
+        <span className={`${sizes.subtitle} text-forge-black/60 uppercase tracking-[0.18em] font-semibold mt-1`}>
+          {subtitle}
+        </span>
       )}
     </div>
   );

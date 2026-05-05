@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@fontsource/open-sauce-sans": "^5.2.5",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.49.4",
     "@types/papaparse": "^5.5.2",

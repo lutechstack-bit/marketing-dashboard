@@ -185,7 +185,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
               <select
                 value={repName}
                 onChange={e => { setRepName(e.target.value); localStorage.setItem("levelup-current-rep", e.target.value); }}
-                className="text-sm px-2 py-1 rounded-md border border-fg-border bg-white text-fg-text focus:border-slate-400 focus:outline-none"
+                className="text-sm px-2 py-1 rounded-md border border-fg-border bg-white text-fg-text focus:border-forge-yellow focus:outline-none"
               >
                 {REPS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -285,12 +285,12 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               placeholder="Anything worth remembering — objections, family dynamic, follow-up date…"
-              className="flex-1 text-sm px-3 py-2 rounded-md border border-fg-border bg-white focus:border-slate-400 focus:outline-none resize-none min-h-[64px]"
+              className="flex-1 text-sm px-3 py-2 rounded-md border border-fg-border bg-white focus:border-forge-yellow focus:outline-none resize-none min-h-[64px]"
             />
             <button
               onClick={submitNote}
               disabled={submitting || !noteText.trim()}
-              className="self-end px-4 py-2 text-sm font-medium rounded-md bg-fg-text text-white hover:bg-slate-700 disabled:opacity-40 inline-flex items-center gap-1.5"
+              className="self-end px-4 py-2 text-sm font-medium rounded-md bg-forge-yellow text-forge-black hover:bg-forge-orange disabled:opacity-40 inline-flex items-center gap-1.5"
             >
               <Send className="w-3.5 h-3.5"/>Save
             </button>
@@ -395,7 +395,7 @@ function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
                 <td className="px-3 py-2 whitespace-nowrap font-medium text-fg-text">{(p.payment_type || "—").replace(/_/g, " ")}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{inr(p.amount_inr)}</td>
                 <td className="px-3 py-2">
-                  <span className={`text-[11px] px-1.5 py-0.5 rounded ${p.status === "captured" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : p.status === "failed" ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"}`}>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded ${p.status === "captured" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : p.status === "failed" ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-fg-surface text-fg-text ring-1 ring-fg-border"}`}>
                     {p.status || "—"}
                   </span>
                 </td>

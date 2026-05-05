@@ -51,7 +51,7 @@ const SAVED_VIEWS: SavedView[] = [
 ];
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
-  form_partial:   { label: "Form partial",   cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" },
+  form_partial:   { label: "Form partial",   cls: "bg-fg-surface text-fg-muted ring-1 ring-fg-border" },
   form_submitted: { label: "Form submitted", cls: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200" },
   app_fee_paid:   { label: "App fee paid",   cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
   accepted:       { label: "App fee paid",   cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-200" },
@@ -189,7 +189,7 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] 
     <div>
       {/* Top bar — search, count, clear-all */}
       <div className="flex items-center gap-3 mb-4 sticky top-[60px] z-20 py-3 -mx-6 px-6 bg-white/85 backdrop-blur border-b border-fg-border">
-        <div className="flex items-center gap-2 flex-1 max-w-md px-3 py-2 rounded-lg border border-fg-border bg-fg-surface focus-within:border-slate-400 focus-within:bg-white transition-colors">
+        <div className="flex items-center gap-2 flex-1 max-w-md px-3 py-2 rounded-lg border border-fg-border bg-fg-surface focus-within:border-forge-yellow focus-within:bg-white transition-colors">
           <Search className="w-4 h-4 text-fg-subtle" />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
@@ -204,7 +204,7 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] 
           {initialLeads.length.toLocaleString("en-IN")}
         </div>
         {anyFilterActive && (
-          <button onClick={clearAll} className="text-xs px-3 py-2 rounded-lg border border-fg-border text-fg-muted hover:text-fg-text hover:border-slate-400 transition-colors">
+          <button onClick={clearAll} className="text-xs px-3 py-2 rounded-lg border border-fg-border text-fg-muted hover:text-fg-text hover:border-forge-yellow transition-colors">
             Clear all
           </button>
         )}
@@ -284,7 +284,7 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadRow[] 
             </thead>
             <tbody>
               {filtered.slice(0, 200).map((l) => {
-                const stage = STAGE_LABEL[l.funnel_stage || ""] || { label: l.funnel_stage || "—", cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
+                const stage = STAGE_LABEL[l.funnel_stage || ""] || { label: l.funnel_stage || "—", cls: "bg-fg-surface text-fg-muted ring-1 ring-fg-border" };
                 const isHot = l.score >= 75 || l.funnel_stage === "accepted";
                 return (
                   <tr key={l.id} className={`border-b border-fg-border/70 row-hover ${isHot ? "bg-amber-50/40" : ""}`}>
@@ -361,7 +361,7 @@ function ScoreBadge({ score }: { score: number }) {
   if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";
   else if (score >= 50) cls = "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300";
   else if (score >= 25) cls = "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200";
-  else                  cls = "bg-slate-100 text-slate-500 ring-1 ring-slate-200";
+  else                  cls = "bg-fg-surface text-fg-subtle ring-1 ring-fg-border";
   return (
     <div className={`inline-flex items-center justify-center w-11 h-11 rounded-lg font-bold text-base tabular-nums ${cls}`}>
       {score}

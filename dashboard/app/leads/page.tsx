@@ -39,7 +39,7 @@ function KpiPill({ label, value, icon, accent }: { label: string; value: number;
   const colors = {
     amber:   "border-amber-300 text-amber-800 bg-amber-50",
     emerald: "border-emerald-300 text-emerald-800 bg-emerald-50",
-    slate:   "border-slate-200 text-slate-700 bg-slate-50",
+    slate:   "border-fg-border text-fg-text bg-fg-surface",
   };
   return (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${colors[accent]}`}>

@@ -73,7 +73,7 @@ export default function InsightsClient({ insights }: { insights: InsightsPayload
           </div>
           <button
             onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className="text-xs px-3 py-1.5 rounded-md border border-fg-border text-fg-muted hover:text-fg-text hover:border-slate-400 inline-flex items-center gap-1.5"
+            className="text-xs px-3 py-1.5 rounded-md border border-fg-border text-fg-muted hover:text-fg-text hover:border-forge-yellow inline-flex items-center gap-1.5"
             title="Show how the numbers were computed"
           >
             <Info className="w-3.5 h-3.5" />
@@ -380,7 +380,7 @@ function MiniScore({ score }: { score: number }) {
   if (score >= 70)      cls = "bg-amber-500 text-white";
   else if (score >= 50) cls = "bg-emerald-500 text-white";
   else if (score >= 30) cls = "bg-cyan-100 text-cyan-800";
-  else                  cls = "bg-slate-100 text-slate-500";
+  else                  cls = "bg-fg-surface text-fg-subtle";
   return <div className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold text-xs tabular-nums ${cls}`}>{score}</div>;
 }
 

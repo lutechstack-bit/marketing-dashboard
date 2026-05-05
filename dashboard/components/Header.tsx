@@ -5,6 +5,7 @@ import { LayoutDashboard, Sparkles, Users, Phone, Trophy, ShieldCheck, Activity,
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import HeaderClientControls from "./HeaderClientControls";
 import ForgeWordmark from "./ForgeWordmark";
+import ThemeToggle from "./ThemeToggle";
 
 const SALES_NAV = [
   { href: "/queue",       label: "Queue",        icon: Phone },
@@ -40,18 +41,20 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
   const nav = navForRole(role);
 
   return (
-    <header className="border-b border-fg-border bg-white/85 backdrop-blur sticky top-0 z-30">
+    <header className="border-b border-fg-border bg-fg-card/85 backdrop-blur sticky top-0 z-30">
       <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-5 min-w-0">
           <Link href={role === "sales" ? "/queue" : "/"} className="flex items-center gap-3 shrink-0 group">
             <div className="w-10 h-10 rounded-xl bg-forge-gradient flex items-center justify-center shadow-card group-hover:shadow-forge-glow transition-shadow">
-              <span className="font-display font-extrabold italic text-forge-black text-lg leading-none">F</span>
+              <span className="font-display font-extrabold italic text-forge-black text-lg leading-none">L</span>
             </div>
             <div className="hidden sm:flex flex-col leading-tight">
-              <ForgeWordmark size="sm" subtitle="" />
-              <span className="text-[10px] text-fg-muted leading-tight">
-                {rep ? `${rep.full_name || rep.email} · ${role}` : "Sales Intelligence"}
-              </span>
+              <ForgeWordmark size="sm" subtitle="Sales Intelligence" />
+              {rep && (
+                <span className="text-[10px] text-fg-muted leading-tight mt-0.5">
+                  {rep.full_name || rep.email} · {role}
+                </span>
+              )}
             </div>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
@@ -75,6 +78,7 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
             Live
             {lastSync && <span className="ml-1 text-fg-subtle">· {lastSync}</span>}
           </div>
+          <ThemeToggle />
           {rep && <HeaderClientControls email={rep.email} />}
         </div>
       </div>
