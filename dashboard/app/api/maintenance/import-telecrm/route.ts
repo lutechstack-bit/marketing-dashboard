@@ -290,8 +290,8 @@ export async function POST(req: Request) {
     breakdown: Record<string, number>;
     formSource: string;
     responses: Record<string, any>;
-    firstSeen: string;
-    lastActivity: string;
+    firstSeen: string | null;
+    lastActivity: string | null;
   };
 
   const prepared: Prepared[] = [];
@@ -323,8 +323,10 @@ export async function POST(req: Request) {
         d.source ||
         "CSV import";
 
-      const now = new Date().toISOString();
-      const firstSeen = (m.created_at && parseDate(row[m.created_at])) || now;
+      // CRITICAL: only set first_seen / last_activity from a REAL date column
+      // in the CSV. If the source has no date, leave them null — better to
+      // show "—" than pretend the lead came in today. (Founder spec.)
+      const firstSeen    = (m.created_at    && parseDate(row[m.created_at]))    || null;
       const lastActivity = (m.last_activity && parseDate(row[m.last_activity])) || firstSeen;
 
       prepared.push({
@@ -390,7 +392,7 @@ export async function POST(req: Request) {
     program: string; funnel_stage: string;
     source_campaign_name: string;
     score: number; score_breakdown: Record<string, number>;
-    first_seen: string; last_activity: string;
+    first_seen: string | null; last_activity: string | null;
   };
 
   // Use a Map keyed by id so multiple input rows that resolve to the same id

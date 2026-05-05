@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ALL_TIME, inRange, type DateRange } from "@/lib/date-presets";
+import DateRangePicker from "./DateRangePicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -94,6 +96,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
   const [family, setFamily] = useState<Family>("forge");
   const [product, setProduct] = useState<string>("FFM");
   const [bucket, setBucket] = useState<BucketId>("abandoned");
+  const [dateRange, setDateRange] = useState<DateRange>(ALL_TIME);
   const [mounted, setMounted] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(defaultVisible());
@@ -138,8 +141,14 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
 
   // Leads filtered to current product
   const productLeads = useMemo(
-    () => initialLeads.filter(l => l.program === product),
-    [initialLeads, product]
+    () => {
+      let xs = initialLeads.filter(l => l.program === product);
+      if (dateRange.start || dateRange.end) {
+        xs = xs.filter(l => inRange(l.first_seen, dateRange));
+      }
+      return xs;
+    },
+    [initialLeads, product, dateRange]
   );
 
   // Bucket filtered (with Calendly de-dup for B)
@@ -276,15 +285,18 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
         />
       )}
 
-      {/* Bucket toggles + column settings — counts come from DB aggregate
-          so they match the program-tab badges above. */}
+      {/* Bucket toggles + date range + column settings — counts come from
+          DB aggregate so they match the program-tab badges above. */}
       <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
         <BucketTabs current={bucket} counts={{
           abandoned:    productCounts[product]?.abandoned    ?? 0,
           need_to_book: productCounts[product]?.need_to_book ?? 0,
           partials:     productCounts[product]?.partials     ?? 0,
         }} onChange={setBucketP} />
-        {mounted && <ColumnSettings visible={visibleCols} onChange={setVisibleCols} />}
+        <div className="flex items-center gap-2">
+          <DateRangePicker value={dateRange} onChange={setDateRange} align="right" />
+          {mounted && <ColumnSettings visible={visibleCols} onChange={setVisibleCols} />}
+        </div>
       </div>
 
       {/* Active bucket description + visibility note */}
@@ -536,7 +548,7 @@ function LeadRowView({ lead, rank, bucketId, visibleCols, earning }: { lead: Lea
       {show("submitted") && (
         <td className="py-3 px-2 whitespace-nowrap text-xs text-fg-muted">
           <div className={submittedRecent ? "text-yellow-700 font-semibold" : ""}>{fmtSubmitted(lead.first_seen)}</div>
-          <div className="text-fg-subtle text-[10px]">{fmtAgo(lead.first_seen)} ago</div>
+          {lead.first_seen && <div className="text-fg-subtle text-[10px]">{fmtAgo(lead.first_seen)} ago</div>}
         </td>
       )}
       {show("why_hot") && (

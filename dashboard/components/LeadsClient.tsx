@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LeadRow } from "@/lib/supabase";
 import { inr } from "@/lib/format";
+import { ALL_TIME, inRange, type DateRange } from "@/lib/date-presets";
+import DateRangePicker from "./DateRangePicker";
 import {
   Phone, Mail, Search, X, ArrowUpDown, ArrowUp, ArrowDown,
   Flame, ChevronRight,
@@ -17,14 +19,6 @@ const FAMILIES: { id: "all" | "forge" | "live"; label: string; programs: string[
   { id: "live",  label: "Live",  programs: ["BFP", "VE", "L3C"] },
 ];
 type Rep = { name: string; programs: string[] };
-
-// Date filter presets — written as "last N hours / days"
-const DATE_PRESETS: { id: string; label: string; hours: number | null }[] = [
-  { id: "all",  label: "All time", hours: null },
-  { id: "24h", label: "Last 24h", hours: 24 },
-  { id: "7d",  label: "Last 7d",  hours: 24 * 7 },
-  { id: "30d", label: "Last 30d", hours: 24 * 30 },
-];
 
 // Saved-view chips: pre-baked filter combos a rep would actually want
 type SavedView = { id: string; label: string; description: string; predicate: (l: LeadRow) => boolean };
@@ -96,7 +90,8 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
   const [stages, setStages] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<Set<string>>(new Set());
   const [minScore, setMinScore] = useState(0);
-  const [dateRange, setDateRange] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange>(ALL_TIME);
+  const [dateField, setDateField] = useState<"first_seen" | "last_activity">("first_seen");
   const [savedView, setSavedView] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("score");
@@ -131,9 +126,8 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
     if (programs.size) xs = xs.filter(l => l.program && programs.has(l.program));
     if (minScore > 0)  xs = xs.filter(l => l.score >= minScore);
 
-    const hours = DATE_PRESETS.find(d => d.id === dateRange)?.hours;
-    if (hours !== null && hours !== undefined) {
-      xs = xs.filter(l => hoursSince(l.last_activity) <= hours);
+    if (dateRange.start || dateRange.end) {
+      xs = xs.filter(l => inRange(l[dateField] || null, dateRange));
     }
 
     if (savedView) {
@@ -160,7 +154,7 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
       return sortDir === "asc" ? cmp : -cmp;
     });
     return xs;
-  }, [initialLeads, rep, stages, programs, minScore, dateRange, savedView, search, sortKey, sortDir]);
+  }, [initialLeads, rep, family, stages, programs, minScore, dateRange, dateField, savedView, search, sortKey, sortDir]);
 
   const stageCounts = useMemo(() => {
     const base = initialLeads.filter(l =>
@@ -188,9 +182,9 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
 
   const clearAll = () => {
     setRep(null); setStages(new Set()); setPrograms(new Set());
-    setMinScore(0); setDateRange("all"); setSavedView(null); setSearch("");
+    setMinScore(0); setDateRange(ALL_TIME); setSavedView(null); setSearch("");
   };
-  const anyFilterActive = !!(rep || stages.size || programs.size || minScore || dateRange !== "all" || savedView || search);
+  const anyFilterActive = !!(rep || family !== "all" || stages.size || programs.size || minScore || dateRange.id !== "all" || savedView || search);
 
   return (
     <div>
@@ -271,10 +265,21 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
           {[0, 25, 50, 75].map(s => (
             <button key={s} className={`chip ${minScore === s ? "chip-active" : ""}`} onClick={() => setMinScore(s)}>{s}+</button>
           ))}
-          <span className="text-[11px] uppercase tracking-wider text-fg-muted ml-3 mr-1">Activity</span>
-          {DATE_PRESETS.map(d => (
-            <button key={d.id} className={`chip ${dateRange === d.id ? "chip-active" : ""}`} onClick={() => setDateRange(d.id)}>{d.label}</button>
-          ))}
+        </div>
+
+        {/* Date range row — own line because the picker takes more space */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] uppercase tracking-wider text-fg-muted mr-1 w-16">Date</span>
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <select
+            value={dateField}
+            onChange={e => setDateField(e.target.value as "first_seen" | "last_activity")}
+            className="text-xs px-2 py-1.5 border border-fg-border rounded-md bg-fg-card text-forge-black"
+            title="Filter by which date field"
+          >
+            <option value="first_seen">By submitted date</option>
+            <option value="last_activity">By last activity</option>
+          </select>
         </div>
       </div>
 
