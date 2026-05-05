@@ -257,7 +257,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Body must be { rows: [...] }" }, { status: 400 });
   }
 
-  const m: ColumnMapping = body.mapping || {};
+  // Fallback to TeleCRM column names if no mapping is provided. Lets
+  // standalone callers (cron, scripts) hit the endpoint without needing the
+  // dashboard's column-mapper logic.
+  const TELECRM_DEFAULT_MAPPING: ColumnMapping = {
+    email: "Email", phone: "Phone",
+    first_name: "First Name", last_name: "Last Name",
+    program: "Product", status: "Status", lost_reason: "Lost Reason",
+    reason: "Reason", scholarship: "Scholarship",
+    age: "Age", job_role: "Job Role", designation: "Designation",
+    city: "City", form_source: "Form Source",
+    interview: "Interview", interview_date: "Interview Date", interviewer: "Interviewer",
+    grant: "Grant", grant_amount: "Grant Amount",
+  };
+  const m: ColumnMapping =
+    body.mapping && Object.keys(body.mapping).length > 0
+      ? body.mapping
+      : TELECRM_DEFAULT_MAPPING;
   const d: Defaults = body.defaults || {};
   const admin = adminClient();
 
