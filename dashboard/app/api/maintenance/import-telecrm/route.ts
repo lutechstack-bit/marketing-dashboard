@@ -333,11 +333,17 @@ export async function POST(req: Request) {
     existingRows = data || [];
   }
 
-  const existingByEmailProg = new Map<string, any>();
-  const existingByPhoneProg = new Map<string, any>();
+  // claimed[`${key}|${program}`] = id  — tracks every (email, program) and
+  // (phone, program) pair that's been claimed by either an existing row or an
+  // earlier in-batch row, so subsequent rows know to merge instead of duplicate.
+  const claimedByEmail = new Map<string, string>(); // email|program → id
+  const claimedByPhone = new Map<string, string>(); // phone|program → id
+  // Track the existing row data for known ids so we know when not to clobber
+  const existingById = new Map<string, any>();
   for (const r of existingRows) {
-    if (r.email && r.program) existingByEmailProg.set(`${r.email}|${r.program}`, r);
-    if (r.phone && r.program) existingByPhoneProg.set(`${r.phone}|${r.program}`, r);
+    existingById.set(r.id, r);
+    if (r.email && r.program) claimedByEmail.set(`${r.email}|${r.program}`, r.id);
+    if (r.phone && r.program) claimedByPhone.set(`${r.phone}|${r.program}`, r.id);
   }
 
   // ----- Pass 3: build leadRows + subRows for bulk upsert
@@ -350,42 +356,86 @@ export async function POST(req: Request) {
     first_seen: string; last_activity: string;
   };
 
-  const leadRows: LeadUpsert[] = [];
-  const subRows: any[] = [];
+  // Use a Map keyed by id so multiple input rows that resolve to the same id
+  // (in-batch duplicates) collapse into one upsert payload — last write wins.
+  const leadRowsById = new Map<string, LeadUpsert>();
+  const subRowsById = new Map<string, any>();
   let insertedCount = 0;
   let updatedCount = 0;
+  let mergedCount = 0;
 
   for (const p of prepared) {
-    const found =
-      (p.email && existingByEmailProg.get(`${p.email}|${p.program}`)) ||
-      (p.phone && existingByPhoneProg.get(`${p.phone}|${p.program}`)) ||
-      null;
+    const emailKey = p.email ? `${p.email}|${p.program}` : null;
+    const phoneKey = p.phone ? `${p.phone}|${p.program}` : null;
 
-    const id = found?.id || crypto.randomUUID();
-    if (found) updatedCount++;
-    else insertedCount++;
+    const idByEmail = emailKey ? claimedByEmail.get(emailKey) : undefined;
+    const idByPhone = phoneKey ? claimedByPhone.get(phoneKey) : undefined;
 
-    // For updates, prefer existing data when import would clobber with worse data
-    const finalName = (found && found.name) || p.name;
-    const finalScore = Math.max(p.score, found?.score || 0);
-    const finalSource = (found && found.source_campaign_name) || p.formSource;
+    let id: string;
 
-    leadRows.push({
+    if (idByEmail && idByPhone && idByEmail !== idByPhone) {
+      // Merge case: row's email matches record A, phone matches different
+      // record B. Pick the email-matched id (more identifying); we'll
+      // intentionally NOT write the conflicting phone.
+      id = idByEmail;
+      mergedCount++;
+    } else if (idByEmail) {
+      id = idByEmail;
+    } else if (idByPhone) {
+      id = idByPhone;
+    } else {
+      id = crypto.randomUUID();
+    }
+
+    // The existing DB row backing this id (undefined for fresh inserts or
+    // rows claimed in-batch by an earlier new row).
+    const existing = existingById.get(id);
+
+    // Pick email/phone we'll write. Rules:
+    //  · If existing has a value, keep it (never overwrite).
+    //  · In an email/phone merge case, drop the conflicting field.
+    //  · If a candidate value is claimed by a different id, drop it.
+    let finalEmail: string | null = existing?.email || p.email;
+    let finalPhone: string | null = existing?.phone || p.phone;
+
+    if (idByEmail && idByPhone && idByEmail !== idByPhone) {
+      finalPhone = existing?.phone || null;
+    }
+    if (finalEmail) {
+      const claimedBy = claimedByEmail.get(`${finalEmail}|${p.program}`);
+      if (claimedBy && claimedBy !== id) finalEmail = existing?.email || null;
+    }
+    if (finalPhone) {
+      const claimedBy = claimedByPhone.get(`${finalPhone}|${p.program}`);
+      if (claimedBy && claimedBy !== id) finalPhone = existing?.phone || null;
+    }
+
+    // Register/update the claim maps so the next prepared row sees this row's
+    // bindings (in-batch chained merges).
+    if (finalEmail) claimedByEmail.set(`${finalEmail}|${p.program}`, id);
+    if (finalPhone) claimedByPhone.set(`${finalPhone}|${p.program}`, id);
+
+    const finalName  = existing?.name || p.name;
+    const finalScore = Math.max(p.score, existing?.score || 0);
+    const finalSource = existing?.source_campaign_name || p.formSource;
+
+    leadRowsById.set(id, {
       id,
-      email: (found && found.email) || p.email,
-      phone: (found && found.phone) || p.phone,
+      email: finalEmail,
+      phone: finalPhone,
       name: finalName,
       program: p.program,
-      funnel_stage: p.funnel_stage, // CRM is authoritative for stage transitions
+      funnel_stage: p.funnel_stage,
       source_campaign_name: finalSource,
       score: finalScore,
       score_breakdown: p.breakdown,
-      first_seen: found ? (found.first_seen || p.firstSeen) : p.firstSeen,
+      first_seen: existing?.first_seen || p.firstSeen,
       last_activity: p.lastActivity,
     });
 
-    subRows.push({
-      id: syntheticSubmissionId({ email: p.email, phone: p.phone, program: p.program }),
+    const subId = syntheticSubmissionId({ email: p.email, phone: p.phone, program: p.program });
+    subRowsById.set(subId, {
+      id: subId,
       lead_id: id,
       form_id: "csv_import",
       form_name: "CSV legacy import",
@@ -397,27 +447,62 @@ export async function POST(req: Request) {
     });
   }
 
-  // ----- Pass 4: bulk upsert leads (by id) + form_submissions (by id)
-  if (leadRows.length > 0) {
-    const { error: leadErr } = await admin
-      .from("leads")
-      .upsert(leadRows, { onConflict: "id" });
-    if (leadErr) {
-      return NextResponse.json({
-        error: `lead upsert failed: ${leadErr.message}`,
-        sample_lead: leadRows[0],
-        prepared: prepared.length,
-      }, { status: 500 });
-    }
+  // Recount: distinct ids that match an existing row = updates
+  updatedCount = 0;
+  for (const id of leadRowsById.keys()) {
+    if (existingById.has(id)) updatedCount++;
   }
-  if (subRows.length > 0) {
-    const { error: subErr } = await admin
-      .from("form_submissions")
-      .upsert(subRows, { onConflict: "id" });
-    if (subErr) {
-      // Non-fatal: leads are already in
-      errors.push({ idx: -1, reason: `sub upsert: ${subErr.message}` });
+  // Inserted = total distinct - updated
+  insertedCount = leadRowsById.size - updatedCount;
+
+  const leadRows = Array.from(leadRowsById.values());
+  const subRows = Array.from(subRowsById.values());
+
+  // ----- Pass 4: bulk upsert. If the bulk fails on a constraint violation we
+  // didn't manage to dedupe in-memory (rare edge case), fall back to per-row
+  // upserts so one bad row doesn't poison the whole batch.
+  async function bulkOrFallback<T extends { id: string }>(
+    table: string,
+    rows: T[],
+    onConflict: string,
+  ): Promise<{ ok: number; failures: { id: string; reason: string }[] }> {
+    if (rows.length === 0) return { ok: 0, failures: [] };
+    const { error } = await admin.from(table).upsert(rows, { onConflict });
+    if (!error) return { ok: rows.length, failures: [] };
+
+    // Bulk failed — retry per-row to isolate the bad ones
+    let ok = 0;
+    const failures: { id: string; reason: string }[] = [];
+    for (const r of rows) {
+      const { error: e2 } = await admin.from(table).upsert([r], { onConflict });
+      if (e2) failures.push({ id: r.id, reason: e2.message });
+      else ok++;
     }
+    return { ok, failures };
+  }
+
+  const leadResult = await bulkOrFallback("leads", leadRows, "id");
+  if (leadResult.failures.length) {
+    leadResult.failures.slice(0, 10).forEach(f =>
+      errors.push({ idx: -1, reason: `lead ${f.id.slice(0, 8)}: ${f.reason}` })
+    );
+  }
+
+  // form_submissions only for leads that actually got upserted, to avoid FK errors
+  const okLeadIds = new Set(
+    leadRows.filter(r => !leadResult.failures.find(f => f.id === r.id)).map(r => r.id),
+  );
+  const validSubs = subRows.filter(s => okLeadIds.has(s.lead_id));
+  const subResult = await bulkOrFallback("form_submissions", validSubs, "id");
+  if (subResult.failures.length) {
+    errors.push({ idx: -1, reason: `${subResult.failures.length} sub-row failures (1st: ${subResult.failures[0].reason})` });
+  }
+
+  // Adjust counts: rows that genuinely failed shouldn't be counted as inserted
+  const failedCount = leadResult.failures.length;
+  if (failedCount > 0) {
+    skipped += failedCount;
+    insertedCount = Math.max(0, insertedCount - failedCount);
   }
 
   return NextResponse.json({
@@ -425,6 +510,7 @@ export async function POST(req: Request) {
     processed: body.rows.length,
     inserted: insertedCount,
     updated: updatedCount,
+    merged: mergedCount,
     skipped,
     errors: errors.slice(0, 10),
   });

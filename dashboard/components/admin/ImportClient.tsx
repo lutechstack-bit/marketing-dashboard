@@ -129,14 +129,14 @@ export default function ImportClient() {
   const runRef = useRef<{ paused: boolean; aborted: boolean }>({ paused: false, aborted: false });
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0, inserted: 0, updated: 0, skipped: 0, errors: 0, elapsedMs: 0 });
+  const [progress, setProgress] = useState({ done: 0, total: 0, inserted: 0, updated: 0, merged: 0, skipped: 0, errors: 0, elapsedMs: 0 });
   const [recentErrors, setRecentErrors] = useState<{ idx: number; reason: string }[]>([]);
 
   function reset() {
     runRef.current = { paused: false, aborted: false };
     setStep("pick"); setFileName(""); setRows([]); setColumns([]); setMapping({});
     setDefaults({ source: "CSV import" }); setRunning(false); setPaused(false);
-    setProgress({ done: 0, total: 0, inserted: 0, updated: 0, skipped: 0, errors: 0, elapsedMs: 0 });
+    setProgress({ done: 0, total: 0, inserted: 0, updated: 0, merged: 0, skipped: 0, errors: 0, elapsedMs: 0 });
     setRecentErrors([]);
   }
 
@@ -167,12 +167,12 @@ export default function ImportClient() {
     setRunning(true); setPaused(false);
     setStep("running");
     const total = rows.length;
-    setProgress({ done: 0, total, inserted: 0, updated: 0, skipped: 0, errors: 0, elapsedMs: 0 });
+    setProgress({ done: 0, total, inserted: 0, updated: 0, merged: 0, skipped: 0, errors: 0, elapsedMs: 0 });
     setRecentErrors([]);
 
     const BATCH = 250;
     const t0 = Date.now();
-    let cum = { inserted: 0, updated: 0, skipped: 0, errors: 0 };
+    let cum = { inserted: 0, updated: 0, merged: 0, skipped: 0, errors: 0 };
 
     for (let i = 0; i < total; i += BATCH) {
       while (runRef.current.paused && !runRef.current.aborted) {
@@ -190,6 +190,7 @@ export default function ImportClient() {
         if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
         cum.inserted += j.inserted || 0;
         cum.updated  += j.updated  || 0;
+        cum.merged   += j.merged   || 0;
         cum.skipped  += j.skipped  || 0;
         cum.errors   += (j.errors?.length || 0);
         if (j.errors?.length) {
@@ -204,6 +205,7 @@ export default function ImportClient() {
         total,
         inserted: cum.inserted,
         updated: cum.updated,
+        merged: cum.merged,
         skipped: cum.skipped,
         errors: cum.errors,
         elapsedMs: Date.now() - t0,
@@ -482,7 +484,7 @@ function MapStep({
 function RunProgress({
   progress, paused, onPauseToggle, onAbort, recentErrors,
 }: {
-  progress: { done: number; total: number; inserted: number; updated: number; skipped: number; errors: number; elapsedMs: number };
+  progress: { done: number; total: number; inserted: number; updated: number; merged: number; skipped: number; errors: number; elapsedMs: number };
   paused: boolean;
   onPauseToggle: () => void;
   onAbort: () => void;
@@ -536,7 +538,7 @@ function RunProgress({
 function DoneSummary({
   progress, recentErrors, onReset,
 }: {
-  progress: { done: number; total: number; inserted: number; updated: number; skipped: number; errors: number; elapsedMs: number };
+  progress: { done: number; total: number; inserted: number; updated: number; merged: number; skipped: number; errors: number; elapsedMs: number };
   recentErrors: { idx: number; reason: string }[];
   onReset: () => void;
 }) {
