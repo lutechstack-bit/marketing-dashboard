@@ -16,9 +16,10 @@ const SALES_ALLOWED = ["/queue", "/leads", "/leaderboard", "/login", "/auth"];
 // Public — no auth check at all
 const PUBLIC_PREFIXES = [
   "/login", "/auth",
-  "/api/webhook/",       // Tally / Razorpay / Calendly webhooks
-  "/api/debug/",         // diagnostic endpoints
-  "/api/maintenance/",   // one-off bulk ops (gated by env, ok for now)
+  "/api/webhook/",                    // Tally / Razorpay / Calendly webhooks
+  "/api/debug/",                      // diagnostic endpoints
+  "/api/maintenance/",                // one-off bulk ops (gated by env)
+  "/api/admin/invite-users",          // bootstrap (gated by ADMIN_BOOTSTRAP_TOKEN)
   "/_next/", "/favicon", "/static/",
 ];
 
