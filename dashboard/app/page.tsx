@@ -1,4 +1,5 @@
-import { loadAll, computeKpis } from "@/lib/data";
+import { loadAll } from "@/lib/data";
+import { fetchUnifiedKpis } from "@/lib/unified-kpis";
 import { inr, fmtInt } from "@/lib/format";
 import Header from "@/components/Header";
 import KpiCard from "@/components/KpiCard";
@@ -11,16 +12,21 @@ import RecentStudents from "@/components/RecentStudents";
 import ProgramScorecards from "@/components/ProgramScorecards";
 import CampaignPerformance from "@/components/CampaignPerformance";
 import TopAds from "@/components/TopAds";
-import { Wallet, IndianRupee, Users, TrendingUp, Target } from "lucide-react";
+import { Wallet, IndianRupee, Users, TrendingUp, Target, Filter } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function HomePage() {
+  // Pull both data sources in parallel. unifiedKpis = the new single-source-of-truth
+  // numbers (Sheets spend × Supabase funnel). data = the rest of the page (charts,
+  // P&L, campaign performance, etc.) which is still authored in Sheets.
   let data: Awaited<ReturnType<typeof loadAll>> | null = null;
+  let unifiedKpis: Awaited<ReturnType<typeof fetchUnifiedKpis>> = null;
   let error: string | null = null;
-  try { data = await loadAll(); }
-  catch (e: any) { error = e?.message || "Failed to load data"; }
+  try {
+    [data, unifiedKpis] = await Promise.all([loadAll(), fetchUnifiedKpis()]);
+  } catch (e: any) { error = e?.message || "Failed to load data"; }
 
   if (error || !data) {
     return (
@@ -37,8 +43,7 @@ export default async function HomePage() {
     );
   }
 
-  const kpis = computeKpis(data);
-  const latestLabel = kpis ? `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][kpis.latest.month-1]} ${kpis.latest.year}` : "";
+  const latestLabel = unifiedKpis?.period.label || "—";
 
   return (
     <>
@@ -55,14 +60,28 @@ export default async function HomePage() {
         {/* Family tabs */}
         <FamilyTabs active="forge" />
 
-        {/* Top KPIs */}
-        {kpis && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-            <KpiCard label="Marketing Spend" value={inr(kpis.spend.now, { compact: true })} prevValue={kpis.spend.prev} sublabel="incl. GST · vs prev month" invert icon={<Wallet className="w-4 h-4" />} />
-            <KpiCard label="Revenue" value={inr(kpis.revenue.now, { compact: true })} prevValue={kpis.revenue.prev} sublabel="from operations · vs prev month" icon={<IndianRupee className="w-4 h-4" />} />
-            <KpiCard label="Paid Students" value={fmtInt(kpis.acquisitions.now)} prevValue={kpis.acquisitions.prev} sublabel="slot confirmations · vs prev month" icon={<Users className="w-4 h-4" />} />
-            <KpiCard label="Blended CAC" value={kpis.cac.now > 0 ? inr(kpis.cac.now) : "—"} prevValue={kpis.cac.prev > 0 ? kpis.cac.prev : undefined} sublabel="cost per paid student" invert icon={<Target className="w-4 h-4" />} />
-            <KpiCard label="Gross P/L" value={inr(kpis.grossPL.now, { compact: true })} prevValue={kpis.grossPL.prev} sublabel="vs prev month" icon={<TrendingUp className="w-4 h-4" />} />
+        {/* Top KPIs — unified source: Sheets spend × Supabase funnel.
+            Three cost-per-X numbers because a single "CAC" hides the truth:
+              CPL = spend / total leads (every form-fill is a lead)
+              CPA = spend / app-fee-paid (real $ commitment — the metric that matters)
+              CAC = spend / confirmed (balance paid — true customer acquisition cost) */}
+        {unifiedKpis && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
+            <KpiCard label="Marketing Spend" value={inr(unifiedKpis.spend.now, { compact: true })} prevValue={unifiedKpis.spend.prev}
+              sublabel={`Sheets ${inr(unifiedKpis.spend_sheet, { compact: true })} + manual ${inr(unifiedKpis.spend_manual, { compact: true })}`}
+              invert icon={<Wallet className="w-4 h-4" />} />
+            <KpiCard label="Revenue" value={inr(unifiedKpis.revenue.now, { compact: true })} prevValue={unifiedKpis.revenue.prev}
+              sublabel="from operations · vs prev month" icon={<IndianRupee className="w-4 h-4" />} />
+            <KpiCard label="Total Leads" value={fmtInt(unifiedKpis.total_leads.now)} prevValue={unifiedKpis.total_leads.prev}
+              sublabel="created this month · DB truth" icon={<Users className="w-4 h-4" />} />
+            <KpiCard label="App-Fee Paid" value={fmtInt(unifiedKpis.app_fee_paid_count.now)} prevValue={unifiedKpis.app_fee_paid_count.prev}
+              sublabel="cohort created this month" icon={<Filter className="w-4 h-4" />} />
+            <KpiCard label="CPL" value={unifiedKpis.cpl.now > 0 ? inr(unifiedKpis.cpl.now) : "—"} prevValue={unifiedKpis.cpl.prev > 0 ? unifiedKpis.cpl.prev : undefined}
+              sublabel="cost per lead" invert icon={<Target className="w-4 h-4" />} />
+            <KpiCard label="CPA · paid app fee" value={unifiedKpis.cpa.now > 0 ? inr(unifiedKpis.cpa.now) : "—"} prevValue={unifiedKpis.cpa.prev > 0 ? unifiedKpis.cpa.prev : undefined}
+              sublabel="first $ commitment" invert icon={<Target className="w-4 h-4" />} />
+            <KpiCard label="CAC · confirmed" value={unifiedKpis.cac.now > 0 ? inr(unifiedKpis.cac.now) : "—"} prevValue={unifiedKpis.cac.prev > 0 ? unifiedKpis.cac.prev : undefined}
+              sublabel={`${unifiedKpis.confirmed_count.now} balance-paid`} invert icon={<TrendingUp className="w-4 h-4" />} />
           </div>
         )}
 
