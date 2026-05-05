@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 // Pages a sales rep is ALLOWED to visit. Anything else they get redirected.
 const SALES_ALLOWED = ["/queue", "/leads", "/leaderboard", "/login", "/auth"];
@@ -70,12 +71,31 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Logged in — fetch role from sales_reps
-  const { data: rep } = await supabase
-    .from("sales_reps")
-    .select("role,active")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Logged in — fetch role from sales_reps. Use the service-role key to
+  // bypass RLS (the user is already authenticated via the cookie client above;
+  // we just need to look up their role/active flag).
+  let rep: { role: string; active: boolean } | null = null;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data } = await admin
+      .from("sales_reps")
+      .select("role,active")
+      .eq("id", user.id)
+      .maybeSingle();
+    rep = data as any;
+  } else {
+    // Fallback: anon-key client (will fail silently if RLS blocks it)
+    const { data } = await supabase
+      .from("sales_reps")
+      .select("role,active")
+      .eq("id", user.id)
+      .maybeSingle();
+    rep = data as any;
+  }
 
   if (!rep || !rep.active) {
     // Sign them out so the next attempt is clean — otherwise they're stuck in a

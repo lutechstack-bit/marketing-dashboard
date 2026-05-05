@@ -2,7 +2,22 @@
 // and middleware. Reads/writes auth cookies via Next.js's cookies() API.
 
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+/**
+ * Privileged server-only client for reads that need to bypass RLS — e.g.
+ * looking up sales_reps role/active for an authenticated user. Never expose
+ * this to the browser. Used only after we've already authenticated the user
+ * via the cookie-based client.
+ */
+function adminClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+}
 
 export function isAuthConfigured(): boolean {
   return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -49,7 +64,10 @@ export async function getCurrentRep(): Promise<{
     const supabase = await createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const { data: rep } = await supabase
+    // Use the service-role client for the rep lookup so RLS doesn't block it.
+    // Safe: we've already authenticated the user via the cookie session above.
+    const admin = adminClient();
+    const { data: rep } = await admin
       .from("sales_reps")
       .select("id,email,full_name,role,active")
       .eq("id", user.id)
