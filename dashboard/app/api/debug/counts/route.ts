@@ -25,27 +25,35 @@ export async function GET(req: Request) {
     counts[t] = error ? `err:${error.message}` : (count ?? 0);
   }
 
-  // Per-program leads
-  const { data: byProgram } = await admin
-    .from("leads")
-    .select("program")
-    .limit(50000);
+  // Per-program + per-funnel-stage tally — paginated past Supabase's 1000-row
+  // default cap.
   const programTally: Record<string, number> = {};
-  for (const r of byProgram || []) {
-    const p = (r as any).program || "unknown";
-    programTally[p] = (programTally[p] || 0) + 1;
-  }
-
-  // Per-funnel-stage
-  const { data: byStage } = await admin
-    .from("leads")
-    .select("funnel_stage")
-    .limit(50000);
   const stageTally: Record<string, number> = {};
-  for (const r of byStage || []) {
-    const s = (r as any).funnel_stage || "unknown";
-    stageTally[s] = (stageTally[s] || 0) + 1;
+  const programStageTally: Record<string, Record<string, number>> = {};
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await admin
+      .from("leads")
+      .select("program,funnel_stage")
+      .range(from, from + pageSize - 1);
+    if (error) break;
+    if (!data || data.length === 0) break;
+    for (const r of data as any[]) {
+      const p = r.program || "unknown";
+      const s = r.funnel_stage || "unknown";
+      programTally[p] = (programTally[p] || 0) + 1;
+      stageTally[s] = (stageTally[s] || 0) + 1;
+      (programStageTally[p] ||= {})[s] = (programStageTally[p][s] || 0) + 1;
+    }
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
 
-  return NextResponse.json({ counts, by_program: programTally, by_stage: stageTally });
+  return NextResponse.json({
+    counts,
+    by_program: programTally,
+    by_stage: stageTally,
+    by_program_stage: programStageTally,
+  });
 }
