@@ -51,12 +51,23 @@ export async function POST(req: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  // 1. Pull all captured payments → group by lead_id, find max stage implied
-  const { data: pays } = await admin
-    .from("payments")
-    .select("lead_id,payment_type,status,email,phone")
-    .eq("status", "captured")
-    .limit(100000);
+  // 1. Pull all captured payments — paginate because Supabase caps single-
+  // query reads at ~1000 rows.
+  const allPays: any[] = [];
+  let pFrom = 0;
+  const pSize = 1000;
+  while (true) {
+    const { data, error } = await admin
+      .from("payments")
+      .select("lead_id,payment_type,status,email,phone")
+      .eq("status", "captured")
+      .range(pFrom, pFrom + pSize - 1);
+    if (error) return NextResponse.json({ error: `payments fetch: ${error.message}` }, { status: 500 });
+    if (!data || data.length === 0) break;
+    allPays.push(...data);
+    if (data.length < pSize) break;
+    pFrom += pSize;
+  }
 
   // Map: lead_id → highest stage implied by payments
   const stageByLead = new Map<string, string>();
@@ -64,7 +75,7 @@ export async function POST(req: Request) {
   const stageByEmail = new Map<string, string>();
   const stageByPhone = new Map<string, string>();
 
-  for (const p of (pays || []) as any[]) {
+  for (const p of allPays as any[]) {
     const t = String(p.payment_type || "").toLowerCase();
     let stage: string | null = null;
     if (t === "balance" || t === "full") stage = "balance_paid";
@@ -146,8 +157,10 @@ export async function POST(req: Request) {
     detected: updates.length,
     promoted: applied,
     by_target_stage: byStage,
-    payments_seen: pays?.length || 0,
+    payments_seen: allPays.length,
     payments_with_lead_id: stageByLead.size,
+    payments_unlinked_email: stageByEmail.size,
+    payments_unlinked_phone: stageByPhone.size,
     failures: failures.slice(0, 5),
   });
 }
