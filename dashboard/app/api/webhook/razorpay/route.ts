@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
 import { inferPaymentType, findLead, normalizePhone } from "@/lib/webhook-helpers";
+import { lookupAssignment, getLeadEditionAnswer, lockEarning, unlockEarningForLead, revertEarning } from "@/lib/earnings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -94,8 +95,51 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[razorpay-webhook:${account}] event=${event} amount=${amountInr} type=${inferred.payment_type} lead=${lead?.id} email=${payment.email}`);
-    return NextResponse.json({ ok: true, payment_id: payment.id, lead_id: lead?.id });
+    // Earnings ledger writes — drives /admin/payouts + /leaderboard.
+    let earningEvent: string | null = null;
+    if (lead && payment.status === "captured" && lead.program) {
+      // Slot confirmation → LOCK earning
+      if (inferred.payment_type === "confirmation") {
+        const editionAnswer = await getLeadEditionAnswer(lead.id);
+        const assignment = await lookupAssignment({
+          productCode: lead.program,
+          editionAnswer,
+        });
+        if (assignment) {
+          const earning = await lockEarning({
+            lead_id: lead.id,
+            rep_id: assignment.rep_id,
+            product_code: lead.program,
+            edition_label: assignment.edition_label,
+            amount_inr: assignment.incentive_inr,
+            slot_payment_id: payment.id,
+            notes: `Slot confirmation ₹${amountInr}`,
+          });
+          earningEvent = earning ? `locked-${earning.id}` : "lock-failed";
+        } else {
+          earningEvent = `no-assignment-for-${lead.program}`;
+        }
+      }
+      // Balance / full → UNLOCK existing locked earning
+      if (inferred.payment_type === "full") {
+        const earning = await unlockEarningForLead({
+          lead_id: lead.id,
+          balance_payment_id: payment.id,
+        });
+        earningEvent = earning ? `unlocked-${earning.id}` : "unlock-no-locked-earning";
+      }
+    }
+    // Refund — silent revert (per founder choice)
+    if (payment.status === "refunded") {
+      const reverted = await revertEarning({
+        payment_id: payment.id,
+        reason: `Razorpay refund detected for ${payment.id}`,
+      });
+      if (reverted) earningEvent = `reverted-${reverted.id}`;
+    }
+
+    console.log(`[razorpay-webhook:${account}] event=${event} amount=${amountInr} type=${inferred.payment_type} lead=${lead?.id} earning=${earningEvent}`);
+    return NextResponse.json({ ok: true, payment_id: payment.id, lead_id: lead?.id, earning: earningEvent });
   } catch (e: any) {
     console.error(`[razorpay-webhook:${account}] error:`, e?.message);
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });

@@ -1,6 +1,8 @@
 import Header from "@/components/Header";
 import { fetchLeads } from "@/lib/supabase";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
+import { getCurrentRep } from "@/lib/auth/supabase-server";
+import EarningsHeader from "@/components/EarningsHeader";
 import QueueClient from "@/components/QueueClient";
 
 export const dynamic = "force-dynamic";
@@ -29,10 +31,16 @@ export default async function QueuePage() {
       .map(([email]) => email)
   );
 
+  // Logged-in rep — drives EarningsHeader (sales reps only) and the per-rep filter
+  const currentRep = await getCurrentRep();
+
   return (
     <>
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
+        {currentRep && currentRep.role === "sales" && (
+          <EarningsHeader repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
+        )}
         <QueueClient
           initialLeads={leads}
           bookedEmails={Array.from(bookedEmails)}

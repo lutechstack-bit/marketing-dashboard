@@ -22,7 +22,9 @@ const FOUNDER_NAV = [
 
 const ADMIN_NAV = [
   ...FOUNDER_NAV,
-  { href: "/admin/payouts",   label: "Payouts",   icon: ShieldCheck },
+  { href: "/admin/payouts", label: "Payouts", icon: ShieldCheck },
+  { href: "/admin/team",    label: "Team",    icon: Users },
+  { href: "/admin/audit",   label: "Audit",   icon: ShieldCheck },
 ];
 
 function navForRole(role: string) {
