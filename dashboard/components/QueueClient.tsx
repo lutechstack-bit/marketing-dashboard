@@ -76,9 +76,15 @@ type QueueClientProps = {
   bookedEmails: string[];
   calendlyConnected: boolean;
   earningsByLead?: Record<string, EarningSummary>;
+  /**
+   * Real per-program-per-stage counts from a SQL aggregate query — the source
+   * of truth for the program tabs (the loaded `initialLeads` slice can be
+   * smaller than the actual totals, so we display these instead).
+   */
+  totalCounts?: Record<string, Record<string, number>>;
 };
 
-export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected, earningsByLead = {} }: QueueClientProps) {
+export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected, earningsByLead = {}, totalCounts }: QueueClientProps) {
   const router = useRouter();
   const [family, setFamily] = useState<Family>("forge");
   const [product, setProduct] = useState<string>("FFM");
@@ -152,10 +158,46 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
     return out;
   }, [productLeads, bookedSet, calendlyConnected]);
 
-  // Counts across ALL products (drives the product-tab badges)
+  // Counts across ALL products (drives the program-tab badges).
+  //
+  // Prefer `totalCounts` from the server (real SQL aggregates over the entire
+  // leads table). Fall back to counting the loaded initialLeads slice if the
+  // server didn't supply totals — e.g. older deploys, or if the aggregate
+  // query failed.
   const productCounts = useMemo(() => {
     const c: Record<string, { abandoned: number; need_to_book: number; partials: number }> = {};
     for (const p of PRODUCTS) c[p.code] = { abandoned: 0, need_to_book: 0, partials: 0 };
+
+    if (totalCounts) {
+      for (const p of PRODUCTS) {
+        const t = totalCounts[p.code] || {};
+        c[p.code] = {
+          abandoned:    t.form_submitted || 0,
+          // need_to_book = app_fee_paid + accepted minus calendar-booked emails
+          need_to_book: (t.app_fee_paid || 0) + (t.accepted || 0),
+          partials:     t.form_partial || 0,
+        };
+      }
+      // If Calendly is connected, decrement need_to_book by the number of
+      // booked emails per program. We have to count from initialLeads since
+      // bookedEmails is global; this is approximate but better than ignoring.
+      if (calendlyConnected && bookedSet.size > 0) {
+        const bookedByProg: Record<string, number> = {};
+        for (const l of initialLeads) {
+          if (!l.program || !c[l.program]) continue;
+          const b = bucketFor(l);
+          if (b !== "need_to_book") continue;
+          const email = (l.email || "").toLowerCase();
+          if (email && bookedSet.has(email)) bookedByProg[l.program] = (bookedByProg[l.program] || 0) + 1;
+        }
+        for (const p of PRODUCTS) {
+          c[p.code].need_to_book = Math.max(0, c[p.code].need_to_book - (bookedByProg[p.code] || 0));
+        }
+      }
+      return c;
+    }
+
+    // Fallback: count from initialLeads slice (less accurate)
     for (const l of initialLeads) {
       if (!l.program || !c[l.program]) continue;
       const b = bucketFor(l);
@@ -167,7 +209,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       c[l.program][b]++;
     }
     return c;
-  }, [initialLeads, bookedSet, calendlyConnected]);
+  }, [initialLeads, bookedSet, calendlyConnected, totalCounts]);
 
   // Today's Focus stats — across the CURRENT product
   const focus = useMemo(() => {

@@ -101,6 +101,7 @@ export async function fetchLeads(opts: {
   minScore?: number;
   limit?: number;
   enrichments?: EnrichmentKey[];
+  sort?: "score" | "recent";
 } = {}): Promise<LeadRow[]> {
   // Stable cache key from opts
   const key = JSON.stringify({
@@ -109,6 +110,7 @@ export async function fetchLeads(opts: {
     minScore: opts.minScore ?? null,
     limit: opts.limit ?? 500,
     enrichments: (opts.enrichments || []).sort(),
+    sort: opts.sort ?? "score",
   });
   return cachedFetchLeads(key, opts);
 }
@@ -120,8 +122,9 @@ const cachedFetchLeads = unstable_cache(
     minScore?: number;
     limit?: number;
     enrichments?: EnrichmentKey[];
+    sort?: "score" | "recent";
   }) => fetchLeadsImpl(opts),
-  ["fetch-leads-v2"],
+  ["fetch-leads-v3"],
   { revalidate: 30, tags: ["leads"] },
 );
 
@@ -131,9 +134,18 @@ async function fetchLeadsImpl(opts: {
   minScore?: number;
   limit?: number;
   enrichments?: EnrichmentKey[];
+  /**
+   * "score" — top-scoring leads first (default; good for "show me the
+   *   highest-priority ones" bucket views)
+   * "recent" — newest activity first (good for the queue's "show recent
+   *   leads from every program/stage" use case so partials and small
+   *   programs aren't squeezed out)
+   */
+  sort?: "score" | "recent";
 } = {}): Promise<LeadRow[]> {
   const targetLimit = opts.limit || 500;
   const enrichments = opts.enrichments || [];
+  const sortMode = opts.sort || "score";
   const leads: LeadRow[] = [];
   const PAGE = 1000;
   let offset = 0;
@@ -142,9 +154,17 @@ async function fetchLeadsImpl(opts: {
     let q = supabase
       .from("leads")
       .select("id,email,phone,name,program,source_campaign_id,source_campaign_name,source_utm_source,funnel_stage,score,score_breakdown,first_seen,last_activity")
-      .order("score", { ascending: false })
-      .order("last_activity", { ascending: false, nullsFirst: false })
       .range(offset, upper);
+
+    if (sortMode === "recent") {
+      q = q
+        .order("last_activity", { ascending: false, nullsFirst: false })
+        .order("score", { ascending: false });
+    } else {
+      q = q
+        .order("score", { ascending: false })
+        .order("last_activity", { ascending: false, nullsFirst: false });
+    }
 
     if (opts.programs && opts.programs.length) q = q.in("program", opts.programs);
     if (opts.stages && opts.stages.length)     q = q.in("funnel_stage", opts.stages);
@@ -317,6 +337,43 @@ export async function getLeadDetail(leadId: string) {
     activities: (acts.data as LeadActivityRow[]) || [],
   };
 }
+
+/**
+ * Per-program-per-bucket counts for the queue tabs. Computed via aggregate
+ * COUNT queries instead of from the loaded leads slice — so the tabs show the
+ * REAL number of leads per program/stage, not just "how many made it into
+ * the top N loaded by the queue page".
+ *
+ * Returns: counts[program][stage] = N
+ *
+ * Cached 30s, tag "leads" so webhook lead-writes invalidate.
+ */
+export const fetchQueueCounts = unstable_cache(
+  async () => {
+    const programs = ["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"];
+    const stages = ["form_partial", "form_submitted", "app_fee_paid", "accepted"];
+
+    // 7 programs × 4 stages = 28 count queries — fired in parallel
+    const tasks: Array<Promise<{ program: string; stage: string; count: number }>> = [];
+    for (const p of programs) {
+      for (const s of stages) {
+        tasks.push((async () => {
+          const r = await supabase.from("leads").select("*", { count: "exact", head: true })
+            .eq("program", p).eq("funnel_stage", s);
+          return { program: p, stage: s, count: r.count || 0 };
+        })());
+      }
+    }
+    const rows = await Promise.all(tasks);
+
+    const counts: Record<string, Record<string, number>> = {};
+    for (const p of programs) counts[p] = { form_partial: 0, form_submitted: 0, app_fee_paid: 0, accepted: 0 };
+    for (const r of rows) counts[r.program][r.stage] = r.count;
+    return counts;
+  },
+  ["fetch-queue-counts-v1"],
+  { revalidate: 30, tags: ["leads"] },
+);
 
 // Cached: 60s TTL. The numbers don't change frequently and the underlying
 // 13 parallel count queries are still expensive on a 41k-row table.

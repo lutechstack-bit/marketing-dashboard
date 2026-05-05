@@ -1,5 +1,5 @@
 import Header from "@/components/Header";
-import { fetchLeads, supabase } from "@/lib/supabase";
+import { fetchLeads, fetchQueueCounts, supabase } from "@/lib/supabase";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import EarningsHeader from "@/components/EarningsHeader";
@@ -12,17 +12,21 @@ export const maxDuration = 60;
 export default async function QueuePage() {
   const currentRep = await getCurrentRep();
 
-  // Parallel fetch — only actionable stages + only the activities enrichment
-  // (queue uses last_action for the status dropdown; payments/submissions
-  // aren't shown on this list view, so we skip them).
-  const [leads, bookings, earningsRes] = await Promise.all([
-    // Top 800 actionable leads by score = plenty for the queue (covers all 6
-    // programs × ~130 leads each at the top of the priority list).
+  // Parallel fetch — only actionable stages + only the activities enrichment.
+  // sort: "recent" so we pull the most recently active leads from EVERY
+  // program/stage (instead of cherry-picking only the highest-scoring ones,
+  // which previously squeezed out partials and small programs entirely).
+  // Real per-bucket-per-program counts come from a separate aggregate query
+  // (fetchQueueCounts) so the program tabs show the truth, not just what's
+  // in the loaded slice.
+  const [leads, queueCounts, bookings, earningsRes] = await Promise.all([
     fetchLeads({
-      limit: 800,
+      limit: 2500,
       stages: ["form_partial", "form_submitted", "app_fee_paid", "accepted"],
       enrichments: ["activities"],
+      sort: "recent",
     }),
+    fetchQueueCounts(),
     fetchBookingsCached(45).catch(() => []),
     // For sales reps, only their earnings; admins/founders see everyone's
     (async () => {
@@ -67,6 +71,7 @@ export default async function QueuePage() {
           bookedEmails={Array.from(bookedEmails)}
           calendlyConnected={bookings.length > 0}
           earningsByLead={earningsByLead}
+          totalCounts={queueCounts}
         />
       </main>
     </>
