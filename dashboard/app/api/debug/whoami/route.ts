@@ -45,10 +45,31 @@ export async function GET(req: Request) {
     repsByIds[u.id] = data;
   }
 
+  // 4. Mirror the EXACT call middleware makes (raw fetch via PostgREST)
+  const restCalls: Record<string, any> = {};
+  for (const u of authMatches) {
+    try {
+      const r = await fetch(
+        `${process.env.SUPABASE_URL}/rest/v1/sales_reps?id=eq.${u.id}&select=role,active`,
+        {
+          headers: {
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          },
+        },
+      );
+      const body = await r.text();
+      restCalls[u.id] = { status: r.status, body };
+    } catch (e: any) {
+      restCalls[u.id] = { error: e?.message };
+    }
+  }
+
   return NextResponse.json({
     email,
     auth_users: authMatches,
     sales_reps_by_email: repsByEmail || [],
     sales_reps_by_auth_id: repsByIds,
+    middleware_simulation_via_postgrest: restCalls,
   });
 }
