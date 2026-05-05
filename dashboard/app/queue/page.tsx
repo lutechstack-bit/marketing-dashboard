@@ -5,6 +5,8 @@ import { getCurrentRep } from "@/lib/auth/supabase-server";
 import EarningsHeader from "@/components/EarningsHeader";
 import QueueClient from "@/components/QueueClient";
 import TasksPanel from "@/components/TasksPanel";
+import TodaysProgress from "@/components/TodaysProgress";
+import TopOpportunities from "@/components/TopOpportunities";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -86,7 +88,11 @@ export default async function QueuePage() {
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
         {currentRep && currentRep.role === "sales" && (
-          <EarningsHeader repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
+          <>
+            <EarningsHeader repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
+            <TodaysProgress repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
+            <TopOpportunities repId={currentRep.id} />
+          </>
         )}
         <TasksPanel leadsById={leadsById} />
         <QueueClient
