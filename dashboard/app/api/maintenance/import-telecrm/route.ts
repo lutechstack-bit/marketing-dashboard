@@ -115,6 +115,27 @@ function buildName(row: any, m: ColumnMapping): string | null {
   return full || null;
 }
 
+// Progression order — used to never downgrade a lead's stage during import.
+// `lost` is treated as a sibling to form_submitted (rep marked dead, but a
+// later payment can still resurrect to app_fee_paid).
+const STAGE_RANK: Record<string, number> = {
+  form_partial:   0,
+  form_submitted: 1,
+  lost:           1,
+  app_fee_paid:   2,
+  accepted:       3,
+  confirmed:      4,
+  balance_paid:   5,
+  attended:       6,
+};
+
+function pickHigherStage(a: string | null | undefined, b: string | null | undefined): string {
+  const ra = a ? (STAGE_RANK[a] ?? 0) : -1;
+  const rb = b ? (STAGE_RANK[b] ?? 0) : -1;
+  if (rb > ra) return b!;
+  return a || b || "form_submitted";
+}
+
 // All status strings → funnel_stage. Anything we don't recognize defaults to
 // form_submitted. Keys are upper-case for case-insensitive matching.
 const STAGE_MAP: Record<string, string> = {
@@ -324,7 +345,7 @@ export async function POST(req: Request) {
     if (allPhones.length > 0) orParts.push(`phone.in.(${allPhones.map(p => `"${p}"`).join(",")})`);
     const { data, error } = await admin
       .from("leads")
-      .select("id,email,phone,program,name,score,source_campaign_name")
+      .select("id,email,phone,program,name,score,source_campaign_name,funnel_stage,first_seen")
       .in("program", allPrograms)
       .or(orParts.join(","));
     if (error) {
@@ -418,6 +439,10 @@ export async function POST(req: Request) {
     const finalName  = existing?.name || p.name;
     const finalScore = Math.max(p.score, existing?.score || 0);
     const finalSource = existing?.source_campaign_name || p.formSource;
+    // CRITICAL: never downgrade. If existing was already 'app_fee_paid' (set by
+    // a Razorpay webhook), don't push it back to 'form_submitted' just because
+    // the CRM Status column says NEW.
+    const finalStage = pickHigherStage(existing?.funnel_stage, p.funnel_stage);
 
     leadRowsById.set(id, {
       id,
@@ -425,7 +450,7 @@ export async function POST(req: Request) {
       phone: finalPhone,
       name: finalName,
       program: p.program,
-      funnel_stage: p.funnel_stage,
+      funnel_stage: finalStage,
       source_campaign_name: finalSource,
       score: finalScore,
       score_breakdown: p.breakdown,
