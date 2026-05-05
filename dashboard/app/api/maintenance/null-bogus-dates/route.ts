@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // 5 min — 41k leads × pagination + per-row updates can exceed 60s
 
 export async function POST(req: Request) {
   const url = new URL(req.url);
@@ -37,8 +37,9 @@ export async function POST(req: Request) {
   const subUpdated = 0;
 
   // Step 2: find leads that have ONLY csv_import submissions.
-  // Walk in pages so we don't OOM on 41k leads.
-  const PAGE = 2000;
+  // PAGE = 1000 to match Supabase's default cap (range past 1000 just gets
+  // truncated silently — bumping the request size won't help).
+  const PAGE = 1000;
   let from = 0;
   let nullSubmittedLeadIds: string[] = [];
   let realSubmittedFirstByLead: Record<string, string> = {};
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
     const { data: leads, error: lErr } = await admin
       .from("leads")
       .select("id")
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (lErr) return NextResponse.json({ error: `leads page ${from}: ${lErr.message}` }, { status: 500 });
     if (!leads || leads.length === 0) break;
@@ -61,9 +63,7 @@ export async function POST(req: Request) {
       .in("lead_id", leadIds);
 
     const realByLead: Record<string, string> = {};
-    const hasAnyByLead: Record<string, boolean> = {};
     for (const s of (subs || []) as any[]) {
-      hasAnyByLead[s.lead_id] = true;
       if (s.form_id !== "csv_import" && s.submitted_at) {
         const cur = realByLead[s.lead_id];
         if (!cur || s.submitted_at < cur) realByLead[s.lead_id] = s.submitted_at;
