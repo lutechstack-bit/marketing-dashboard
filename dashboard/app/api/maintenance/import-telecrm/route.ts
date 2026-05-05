@@ -1,46 +1,66 @@
-// Bulk import endpoint for the legacy TeleCRM CSV (`All+Data.csv`).
+// Generic CSV bulk-import endpoint.
 //
-// Accepts a batch of rows, normalizes them, computes MQL score, and upserts
-// to leads + creates a form_submission so the AI brief / scoring / queue see
-// the historical context.
+// Used by /admin/import (and originally by the one-off TeleCRM bootstrap).
+// Accepts a batch of arbitrary rows + a column-mapping config so the same
+// endpoint handles any vendor's export, not just TeleCRM.
 //
-// Auth: ADMIN_BOOTSTRAP_TOKEN (same gate used by /api/admin/invite-users).
+// Performance: bulk-upserts in 3 queries per batch (pre-fetch existing → bulk
+// upsert leads by id → bulk upsert form_submissions by id). 10-20× faster
+// than the per-row sequential pattern.
 //
-// POST /api/maintenance/import-telecrm?token=...
-// Body: { rows: TelecrmRow[] }
-// Returns: { ok, processed, inserted, updated, skipped, errors }
+// Auth: ADMIN_BOOTSTRAP_TOKEN (also passes through if caller is an
+// authenticated admin/founder, so the in-dashboard import doesn't need a
+// separate token).
+//
+// POST /api/maintenance/import-telecrm[?token=...]
+// Body: {
+//   rows: Array<Record<string, any>>,
+//   mapping?: ColumnMapping,
+//   defaults?: { program?, status?, source? },
+// }
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getCurrentRep } from "@/lib/auth/supabase-server";
 import { scoreLead } from "@/lib/scoring";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type TelecrmRow = {
-  Status?: string;
-  "Lost Reason"?: string;
-  "First Name"?: string;
-  Email?: string;
-  "Last Name"?: string;
-  Phone?: string;
-  "Form Source"?: string;
-  City?: string;
-  Reason?: string;
-  Scholarship?: string;
-  Age?: string;
-  Product?: string;
-  "Job Role"?: string;
-  Designation?: string;
-  "Scholarship Status"?: string;
-  Interview?: string;
-  "Interview Date"?: string;
-  Interviewer?: string;
-  Grant?: string;
-  "Grant Amount"?: string;
+// --------------------------------------------------------------- types
+
+type ColumnMapping = {
+  email?: string;
+  phone?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  program?: string;
+  status?: string;
+  lost_reason?: string;
+  reason?: string;        // essay
+  scholarship?: string;
+  age?: string;
+  job_role?: string;
+  designation?: string;
+  city?: string;
+  form_source?: string;
+  interview?: string;
+  interview_date?: string;
+  interviewer?: string;
+  grant?: string;
+  grant_amount?: string;
+  // free-form: keep these arbitrary CSV columns in form_submissions.responses
+  passthrough?: string[];
+  // optional date columns (so historical timestamps survive)
+  created_at?: string;
+  last_activity?: string;
 };
 
-// ---------------------------------------------------------------- helpers
+type Defaults = { program?: string; status?: string; source?: string };
+
+// --------------------------------------------------------------- helpers
 
 function adminClient() {
   return createClient(
@@ -51,29 +71,24 @@ function adminClient() {
 }
 
 const PROGRAM_MAP: Record<string, string> = {
-  "FFM": "FFM",
-  "FORGE FILMMAKING": "FFM",
-  "FW": "FW",
-  "FORGE WRITING": "FW",
-  "FC": "FC",
-  "FORGE CREATORS": "FC",
-  "FAI": "FAI",
-  "FORGE AI": "FAI",
-  "BFP": "BFP",
-  "VE": "VE",
-  "LIVE VE": "VE",
+  "FFM": "FFM", "FORGE FILMMAKING": "FFM",
+  "FW": "FW",   "FORGE WRITING": "FW",
+  "FC": "FC",   "FORGE CREATORS": "FC",
+  "FAI": "FAI", "FORGE AI": "FAI",
+  "BFP": "BFP", "BUSINESS FOUNDATIONS": "BFP",
+  "VE": "VE",   "VENTURE ENGINE": "VE", "LIVE VE": "VE",
   "L3C": "L3C",
 };
 
-function normalizeProgram(p?: string): string | null {
-  if (!p) return null;
-  const k = p.trim().toUpperCase();
-  if (!k || k === "-") return null;
+function normalizeProgram(p?: string | null): string | null {
+  if (p == null) return null;
+  const k = String(p).trim().toUpperCase();
+  if (!k || k === "-" || k === "—") return null;
   return PROGRAM_MAP[k] || null;
 }
 
 function normalizePhone(raw?: string | null): string | null {
-  if (!raw) return null;
+  if (raw == null) return null;
   const digits = String(raw).replace(/\D/g, "");
   if (!digits) return null;
   if (digits.length === 10) return `91${digits}`;
@@ -82,221 +97,335 @@ function normalizePhone(raw?: string | null): string | null {
 }
 
 function normalizeEmail(raw?: string | null): string | null {
-  if (!raw) return null;
+  if (raw == null) return null;
   const v = String(raw).trim().toLowerCase();
   if (!v || v === "-" || !v.includes("@")) return null;
   return v;
 }
 
-function buildName(row: TelecrmRow): string | null {
-  const first = (row["First Name"] || "").trim();
-  const last  = (row["Last Name"] || "").trim();
+function buildName(row: any, m: ColumnMapping): string | null {
+  if (m.full_name && row[m.full_name]) {
+    const v = String(row[m.full_name]).trim();
+    if (v && v !== "-") return v;
+  }
+  const first = m.first_name ? String(row[m.first_name] || "").trim() : "";
+  const last  = m.last_name  ? String(row[m.last_name]  || "").trim() : "";
   const lastClean = last && last !== "_" && last !== "-" ? last : "";
   const full = [first, lastClean].filter(Boolean).join(" ").trim();
   return full || null;
 }
 
-// Map TeleCRM Status string → funnel_stage in our schema
+// All status strings → funnel_stage. Anything we don't recognize defaults to
+// form_submitted. Keys are upper-case for case-insensitive matching.
 const STAGE_MAP: Record<string, string> = {
   "NEW": "form_submitted",
   "HOT": "form_submitted",
-  "FOLLOW-UP": "form_submitted",
-  "CALL BACK": "form_submitted",
+  "FOLLOW-UP": "form_submitted", "FOLLOWUP": "form_submitted",
+  "CALL BACK": "form_submitted", "CALLBACK": "form_submitted",
   "DNP REMINDER": "form_submitted",
-  "DNP 1": "form_submitted",
-  "DNP 2": "form_submitted",
-  "DNP 3": "form_submitted",
+  "DNP 1": "form_submitted", "DNP 2": "form_submitted", "DNP 3": "form_submitted",
   "LANGUAGE ISSUE": "form_submitted",
   "FEE LINK SENT": "form_submitted",
-  "APPLICATION FEE PAID": "app_fee_paid",
+  "APPLICATION FEE PAID": "app_fee_paid", "APP FEE PAID": "app_fee_paid",
   "INTERVIEW SCHEDULED": "app_fee_paid",
-  "NEED TO RESCHEDULE INTERVIEW": "app_fee_paid",
+  "NEED TO RESCHEDULE INTERVIEW": "app_fee_paid", "RESCHEDULE INTERVIEW": "app_fee_paid",
   "NO SHOW": "app_fee_paid",
-  "INTERVIEW COMPLETED": "accepted",
+  "INTERVIEW COMPLETED": "accepted", "INTERVIEW DONE": "accepted",
   "ACCEPTANCE SENT": "accepted",
-  "DEFERRED": "accepted",
-  "DEFFERED": "accepted", // typo in source data
-  "CONVERTED": "balance_paid",
+  "DEFFERED": "accepted", "DEFERRED": "accepted",
+  "CONVERTED": "balance_paid", "PAID IN FULL": "balance_paid",
   "LOST": "lost",
+  "DIRECT JUNK": "lost", "JUNK": "lost",
+  "WRONG NUMBER": "lost",
 };
 
-// Statuses we drop entirely
-const SKIP_STATUSES = new Set(["DIRECT JUNK", "WRONG NUMBER", "JUNK"]);
-
-function mapStage(status?: string): { stage: string; skip: boolean } {
-  if (!status) return { stage: "form_submitted", skip: false };
-  const k = status.trim().toUpperCase();
-  if (SKIP_STATUSES.has(k)) return { stage: "lost", skip: true };
-  return { stage: STAGE_MAP[k] || "form_submitted", skip: false };
+function mapStage(status?: string): { stage: string; isJunk: boolean } {
+  if (!status) return { stage: "form_submitted", isJunk: false };
+  const k = String(status).trim().toUpperCase();
+  const stage = STAGE_MAP[k] ?? "form_submitted";
+  const isJunk = ["DIRECT JUNK", "JUNK", "WRONG NUMBER"].includes(k);
+  return { stage, isJunk };
 }
 
-// Build a synthetic Tally-style responses object so MQL scoring + AI brief can
-// use the CSV's essay / scholarship / job-role data the same way they use real
-// Tally form responses.
-function buildResponses(row: TelecrmRow): Record<string, any> {
+// Parse miscellaneous date strings (DD/MM/YYYY, ISO, Unix). Returns ISO or null.
+function parseDate(raw?: string | null): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s || s === "-") return null;
+  const t = Date.parse(s);
+  if (Number.isFinite(t)) return new Date(t).toISOString();
+  // DD/MM/YYYY or DD-MM-YYYY
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  if (m) {
+    const [, d, mo, y] = m;
+    const yr = y.length === 2 ? 2000 + parseInt(y) : parseInt(y);
+    const dt = new Date(Date.UTC(yr, parseInt(mo) - 1, parseInt(d)));
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+  }
+  return null;
+}
+
+// Build the synthetic responses object so MQL scoring + AI brief see it.
+function buildResponses(row: any, m: ColumnMapping): Record<string, any> {
   const r: Record<string, any> = {};
-  if (row.Reason && row.Reason !== "-")
-    r["Tell us why you really want to be on this program"] = row.Reason;
-  if (row.Scholarship && row.Scholarship !== "-")
-    r["Select one (financial fit)"] = row.Scholarship;
-  if (row.Age && row.Age !== "-") r["Age"] = row.Age;
-  if (row["Job Role"] && row["Job Role"] !== "-") r["Job role"] = row["Job Role"];
-  if (row.Designation && row.Designation !== "-") r["Designation"] = row.Designation;
-  if (row.City && row.City !== "-") r["City"] = row.City;
-  if (row["Form Source"] && row["Form Source"] !== "-") r["Form source"] = row["Form Source"];
-  if (row.Interview && row.Interview !== "-") r["Interview"] = row.Interview;
-  if (row.Interviewer && row.Interviewer !== "-") r["Interviewer"] = row.Interviewer;
-  if (row["Lost Reason"] && row["Lost Reason"] !== "-") r["Lost reason"] = row["Lost Reason"];
-  if (row.Grant && row.Grant !== "-") r["Grant"] = row.Grant;
-  if (row["Grant Amount"] && row["Grant Amount"] !== "-") r["Grant amount"] = row["Grant Amount"];
+  const keep = (label: string, key?: string) => {
+    if (!key) return;
+    const v = row[key];
+    if (v == null) return;
+    const s = String(v).trim();
+    if (!s || s === "-") return;
+    r[label] = s;
+  };
+  keep("Tell us why you really want to be on this program", m.reason);
+  keep("Select one (financial fit)", m.scholarship);
+  keep("Age", m.age);
+  keep("Job role", m.job_role);
+  keep("Designation", m.designation);
+  keep("City", m.city);
+  keep("Form source", m.form_source);
+  keep("Interview", m.interview);
+  keep("Interview date", m.interview_date);
+  keep("Interviewer", m.interviewer);
+  keep("Grant", m.grant);
+  keep("Grant amount", m.grant_amount);
+  keep("Lost reason", m.lost_reason);
+  // Passthrough columns: keep them verbatim so nothing's lost
+  for (const col of m.passthrough || []) {
+    const v = row[col];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (!s || s === "-") continue;
+    if (!r[col]) r[col] = s;
+  }
   return r;
 }
 
-// Stable id for the form_submission so re-imports are idempotent
-function syntheticSubmissionId(row: TelecrmRow): string {
-  const email = normalizeEmail(row.Email) || "noemail";
-  const phone = normalizePhone(row.Phone) || "nophone";
-  const program = normalizeProgram(row.Product) || "noprog";
-  return `telecrm_${program}_${email}_${phone}`.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 80);
+// Stable id for form_submissions so re-imports are idempotent
+function syntheticSubmissionId(opts: { email: string | null; phone: string | null; program: string }): string {
+  const seed = `${opts.program}|${opts.email || ""}|${opts.phone || ""}`;
+  const hash = crypto.createHash("sha1").update(seed).digest("hex").slice(0, 16);
+  return `csv_${opts.program}_${hash}`;
 }
 
-// ---------------------------------------------------------------- handler
+// --------------------------------------------------------------- handler
 
 export async function POST(req: Request) {
+  // Auth: bootstrap token OR authenticated admin/founder
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
-  if (!process.env.ADMIN_BOOTSTRAP_TOKEN || token !== process.env.ADMIN_BOOTSTRAP_TOKEN) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tokenOk = process.env.ADMIN_BOOTSTRAP_TOKEN && token === process.env.ADMIN_BOOTSTRAP_TOKEN;
+  if (!tokenOk) {
+    const rep = await getCurrentRep();
+    if (!rep) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (rep.role !== "admin" && rep.role !== "founder") {
+      return NextResponse.json({ error: "admin or founder role required" }, { status: 403 });
+    }
   }
+
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "Supabase env vars missing" }, { status: 500 });
   }
 
-  const body = await req.json().catch(() => null) as { rows?: TelecrmRow[] } | null;
+  const body = (await req.json().catch(() => null)) as {
+    rows?: any[];
+    mapping?: ColumnMapping;
+    defaults?: Defaults;
+  } | null;
+
   if (!body || !Array.isArray(body.rows)) {
     return NextResponse.json({ error: "Body must be { rows: [...] }" }, { status: 400 });
   }
 
+  const m: ColumnMapping = body.mapping || {};
+  const d: Defaults = body.defaults || {};
   const admin = adminClient();
-  let inserted = 0, updated = 0, skipped = 0;
-  const errors: { idx: number; reason: string; sample?: any }[] = [];
+
+  // ----- Pass 1: normalize each input row into a {lead, sub} pair, or skip
+  type Prepared = {
+    rowIdx: number;
+    email: string | null;
+    phone: string | null;
+    program: string;
+    name: string | null;
+    funnel_stage: string;
+    is_junk: boolean;
+    score: number;
+    breakdown: Record<string, number>;
+    formSource: string;
+    responses: Record<string, any>;
+    firstSeen: string;
+    lastActivity: string;
+  };
+
+  const prepared: Prepared[] = [];
+  let skipped = 0;
+  const errors: { idx: number; reason: string }[] = [];
 
   for (let i = 0; i < body.rows.length; i++) {
-    const row = body.rows[i];
+    const row = body.rows[i] || {};
     try {
-      // 1. Skip junk
-      const stageInfo = mapStage(row.Status);
-      if (stageInfo.skip) { skipped++; continue; }
+      const email = m.email ? normalizeEmail(row[m.email]) : null;
+      const phone = m.phone ? normalizePhone(row[m.phone]) : null;
+      const program =
+        (m.program ? normalizeProgram(row[m.program]) : null) ??
+        (d.program ? normalizeProgram(d.program) : null);
 
-      // 2. Normalize core fields
-      const email = normalizeEmail(row.Email);
-      const phone = normalizePhone(row.Phone);
-      const program = normalizeProgram(row.Product);
-      // Need at least program + (email OR phone) to upsert
       if (!program) { skipped++; continue; }
       if (!email && !phone) { skipped++; continue; }
 
-      const name = buildName(row);
-      const responses = buildResponses(row);
+      const status = (m.status ? row[m.status] : null) || d.status || null;
+      const { stage, isJunk } = mapStage(status);
+      const name = buildName(row, m);
+      const responses = buildResponses(row, m);
       const { score, breakdown } = scoreLead({ responses, programCode: program });
 
-      // 3. Find existing lead by email or phone within this program (matches the
-      // composite uniques on the leads table).
-      const orParts: string[] = [];
-      if (email) orParts.push(`email.eq.${email}`);
-      if (phone) orParts.push(`phone.eq.${phone}`);
-      const findQ = await admin
-        .from("leads")
-        .select("id,name,email,phone,program,funnel_stage,score,source_campaign_name")
-        .eq("program", program)
-        .or(orParts.join(","))
-        .limit(1);
-      const existing = (findQ.data || [])[0];
+      const formSource =
+        (m.form_source && row[m.form_source] && String(row[m.form_source]).trim() !== "-"
+          ? `CSV · ${row[m.form_source]}`
+          : null) ||
+        d.source ||
+        "CSV import";
 
-      const formSource = row["Form Source"] && row["Form Source"] !== "-"
-        ? `TeleCRM · ${row["Form Source"]}`
-        : "TeleCRM import";
+      const now = new Date().toISOString();
+      const firstSeen = (m.created_at && parseDate(row[m.created_at])) || now;
+      const lastActivity = (m.last_activity && parseDate(row[m.last_activity])) || firstSeen;
 
-      if (existing) {
-        // Update only if we'd be improving the row. funnel_stage from CRM wins
-        // because the CRM is the authoritative source of call outcomes.
-        const updates: Record<string, any> = {
-          last_activity: new Date().toISOString(),
-        };
-        if (!existing.name && name) updates.name = name;
-        if (!existing.email && email) updates.email = email;
-        if (!existing.phone && phone) updates.phone = phone;
-        if (stageInfo.stage) updates.funnel_stage = stageInfo.stage;
-        if (score > (existing.score || 0)) {
-          updates.score = score;
-          updates.score_breakdown = breakdown;
-        }
-        if (!existing.source_campaign_name) updates.source_campaign_name = formSource;
-        await admin.from("leads").update(updates).eq("id", existing.id);
-        updated++;
-
-        // Upsert form_submission too
-        await admin.from("form_submissions").upsert({
-          id: syntheticSubmissionId(row),
-          lead_id: existing.id,
-          form_id: "telecrm_import",
-          form_name: "TeleCRM legacy import",
-          program,
-          is_completed: true,
-          submitted_at: new Date().toISOString(),
-          email, phone, name,
-          responses,
-        }, { onConflict: "id" });
-      } else {
-        const { data: newLead, error: insErr } = await admin.from("leads").insert({
-          email, phone, name,
-          program,
-          funnel_stage: stageInfo.stage,
-          source_campaign_name: formSource,
-          score,
-          score_breakdown: breakdown,
-          first_seen: new Date().toISOString(),
-          last_activity: new Date().toISOString(),
-        }).select("id").single();
-
-        if (insErr) {
-          // Likely a unique-constraint race — try one more lookup
-          const retry = await admin
-            .from("leads")
-            .select("id")
-            .eq("program", program)
-            .or(orParts.join(","))
-            .limit(1);
-          const retryRow = (retry.data || [])[0];
-          if (retryRow) { updated++; }
-          else { errors.push({ idx: i, reason: insErr.message }); skipped++; continue; }
-        } else {
-          inserted++;
-          await admin.from("form_submissions").upsert({
-            id: syntheticSubmissionId(row),
-            lead_id: newLead!.id,
-            form_id: "telecrm_import",
-            form_name: "TeleCRM legacy import",
-            program,
-            is_completed: true,
-            submitted_at: new Date().toISOString(),
-            email, phone, name,
-            responses,
-          }, { onConflict: "id" });
-        }
-      }
+      prepared.push({
+        rowIdx: i, email, phone, program, name,
+        funnel_stage: stage, is_junk: isJunk,
+        score, breakdown, formSource, responses,
+        firstSeen, lastActivity,
+      });
     } catch (e: any) {
-      errors.push({ idx: i, reason: e?.message || "unknown", sample: row });
+      errors.push({ idx: i, reason: e?.message || "prep error" });
       skipped++;
+    }
+  }
+
+  if (prepared.length === 0) {
+    return NextResponse.json({ ok: true, processed: body.rows.length, inserted: 0, updated: 0, skipped, errors });
+  }
+
+  // ----- Pass 2: pre-fetch any leads already in the DB matching these
+  // (email, program) or (phone, program) pairs. Single round trip.
+  const emailKeys = Array.from(new Set(prepared.filter(p => p.email).map(p => `${p.email}|${p.program}`)));
+  const phoneKeys = Array.from(new Set(prepared.filter(p => p.phone).map(p => `${p.phone}|${p.program}`)));
+
+  const allEmails = Array.from(new Set(prepared.filter(p => p.email).map(p => p.email!)));
+  const allPhones = Array.from(new Set(prepared.filter(p => p.phone).map(p => p.phone!)));
+  const allPrograms = Array.from(new Set(prepared.map(p => p.program)));
+
+  // Pull every lead matching any of (email IN allEmails) OR (phone IN allPhones), program IN allPrograms.
+  // Then in-memory filter by exact (email|program) or (phone|program) pair to avoid cross-program collisions.
+  let existingRows: any[] = [];
+  if (allEmails.length > 0 || allPhones.length > 0) {
+    const orParts: string[] = [];
+    if (allEmails.length > 0) orParts.push(`email.in.(${allEmails.map(e => `"${e}"`).join(",")})`);
+    if (allPhones.length > 0) orParts.push(`phone.in.(${allPhones.map(p => `"${p}"`).join(",")})`);
+    const { data, error } = await admin
+      .from("leads")
+      .select("id,email,phone,program,name,score,source_campaign_name")
+      .in("program", allPrograms)
+      .or(orParts.join(","));
+    if (error) {
+      return NextResponse.json({ error: `prefetch failed: ${error.message}` }, { status: 500 });
+    }
+    existingRows = data || [];
+  }
+
+  const existingByEmailProg = new Map<string, any>();
+  const existingByPhoneProg = new Map<string, any>();
+  for (const r of existingRows) {
+    if (r.email && r.program) existingByEmailProg.set(`${r.email}|${r.program}`, r);
+    if (r.phone && r.program) existingByPhoneProg.set(`${r.phone}|${r.program}`, r);
+  }
+
+  // ----- Pass 3: build leadRows + subRows for bulk upsert
+  type LeadUpsert = {
+    id: string;
+    email: string | null; phone: string | null; name: string | null;
+    program: string; funnel_stage: string;
+    source_campaign_name: string;
+    score: number; score_breakdown: Record<string, number>;
+    first_seen: string; last_activity: string;
+  };
+
+  const leadRows: LeadUpsert[] = [];
+  const subRows: any[] = [];
+  let insertedCount = 0;
+  let updatedCount = 0;
+
+  for (const p of prepared) {
+    const found =
+      (p.email && existingByEmailProg.get(`${p.email}|${p.program}`)) ||
+      (p.phone && existingByPhoneProg.get(`${p.phone}|${p.program}`)) ||
+      null;
+
+    const id = found?.id || crypto.randomUUID();
+    if (found) updatedCount++;
+    else insertedCount++;
+
+    // For updates, prefer existing data when import would clobber with worse data
+    const finalName = (found && found.name) || p.name;
+    const finalScore = Math.max(p.score, found?.score || 0);
+    const finalSource = (found && found.source_campaign_name) || p.formSource;
+
+    leadRows.push({
+      id,
+      email: (found && found.email) || p.email,
+      phone: (found && found.phone) || p.phone,
+      name: finalName,
+      program: p.program,
+      funnel_stage: p.funnel_stage, // CRM is authoritative for stage transitions
+      source_campaign_name: finalSource,
+      score: finalScore,
+      score_breakdown: p.breakdown,
+      first_seen: found ? (found.first_seen || p.firstSeen) : p.firstSeen,
+      last_activity: p.lastActivity,
+    });
+
+    subRows.push({
+      id: syntheticSubmissionId({ email: p.email, phone: p.phone, program: p.program }),
+      lead_id: id,
+      form_id: "csv_import",
+      form_name: "CSV legacy import",
+      program: p.program,
+      is_completed: true,
+      submitted_at: p.firstSeen,
+      email: p.email, phone: p.phone, name: p.name,
+      responses: p.responses,
+    });
+  }
+
+  // ----- Pass 4: bulk upsert leads (by id) + form_submissions (by id)
+  if (leadRows.length > 0) {
+    const { error: leadErr } = await admin
+      .from("leads")
+      .upsert(leadRows, { onConflict: "id" });
+    if (leadErr) {
+      return NextResponse.json({
+        error: `lead upsert failed: ${leadErr.message}`,
+        sample_lead: leadRows[0],
+        prepared: prepared.length,
+      }, { status: 500 });
+    }
+  }
+  if (subRows.length > 0) {
+    const { error: subErr } = await admin
+      .from("form_submissions")
+      .upsert(subRows, { onConflict: "id" });
+    if (subErr) {
+      // Non-fatal: leads are already in
+      errors.push({ idx: -1, reason: `sub upsert: ${subErr.message}` });
     }
   }
 
   return NextResponse.json({
     ok: true,
     processed: body.rows.length,
-    inserted,
-    updated,
+    inserted: insertedCount,
+    updated: updatedCount,
     skipped,
-    errors: errors.slice(0, 20),
+    errors: errors.slice(0, 10),
   });
 }

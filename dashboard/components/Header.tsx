@@ -1,7 +1,7 @@
 // Auth-aware header. Reads the logged-in rep on the server.
 
 import Link from "next/link";
-import { LayoutDashboard, Sparkles, Users, Phone, Trophy, ShieldCheck, Activity } from "lucide-react";
+import { LayoutDashboard, Sparkles, Users, Phone, Trophy, ShieldCheck, Activity, Upload } from "lucide-react";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import HeaderClientControls from "./HeaderClientControls";
 import ForgeWordmark from "./ForgeWordmark";
@@ -24,6 +24,7 @@ const ADMIN_NAV = [
   ...FOUNDER_NAV,
   { href: "/admin/payouts", label: "Payouts", icon: ShieldCheck },
   { href: "/admin/team",    label: "Team",    icon: Users },
+  { href: "/admin/import",  label: "Import",  icon: Upload },
   { href: "/admin/audit",   label: "Audit",   icon: Activity },
 ];
 
