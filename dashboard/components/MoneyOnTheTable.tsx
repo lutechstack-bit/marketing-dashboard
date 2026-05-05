@@ -30,13 +30,13 @@ export default async function MoneyOnTheTable({ repId }: { repId: string }) {
         </div>
         <div className="relative">
           <div className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-semibold inline-flex items-center gap-1.5">
-            <TrendingUp className="w-3 h-3" />Earnable right now · abandoned leads
+            <TrendingUp className="w-3 h-3" />Earnable right now · partials + abandoned
           </div>
           <div className="font-display text-5xl font-extrabold italic text-forge-black mt-1 leading-none tabular-nums">
             {inr(data.total_potential_earnings, { compact: true })}
           </div>
           <div className="text-sm text-fg-muted mt-2 max-w-2xl">
-            <span className="font-semibold text-forge-black">{data.total_count.toLocaleString("en-IN")} leads</span> filled the form but haven&apos;t paid the app fee yet. Each one you convert{" "}
+            <span className="font-semibold text-forge-black">{data.total_count.toLocaleString("en-IN")} leads</span> haven&apos;t paid the app fee yet (started or completed the form). Each one you convert to app-fee-paid{" "}
             <span className="font-semibold text-forge-orange-deep">locks ₹{topAvg(data).toLocaleString("en-IN")} into your earnings</span>{" "}
             (released when they pay balance).
           </div>

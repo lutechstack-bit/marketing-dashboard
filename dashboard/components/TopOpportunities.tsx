@@ -22,10 +22,10 @@ export default async function TopOpportunities({ repId }: { repId: string }) {
           <Flame className="w-5 h-5 text-emerald-700" />
           <div>
             <div className="font-display text-lg font-extrabold italic text-forge-black">
-              Closest to converting
+              Locked earnings · push to balance
             </div>
             <div className="text-xs text-fg-muted">
-              Top {opportunities.length} call-now leads · ₹{(totalIncentive).toLocaleString("en-IN")} in your incentives if all close
+              {opportunities.length} of your locked leads &middot; ₹{(totalIncentive).toLocaleString("en-IN")} unlocks when they pay balance
             </div>
           </div>
         </div>
@@ -55,7 +55,7 @@ export default async function TopOpportunities({ repId }: { repId: string }) {
             </div>
 
             <div className="text-right">
-              <div className="text-[10px] uppercase tracking-[0.1em] text-fg-muted font-semibold">Your incentive</div>
+              <div className="text-[10px] uppercase tracking-[0.1em] text-fg-muted font-semibold">Locked &middot; unlock at balance</div>
               <div className="font-bold text-emerald-700 tabular-nums">{inr(o.incentive_amount)}</div>
             </div>
 

@@ -11,6 +11,11 @@ import {
 } from "lucide-react";
 
 const PROGRAMS = ["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"];
+const FAMILIES: { id: "all" | "forge" | "live"; label: string; programs: string[] }[] = [
+  { id: "all",   label: "All",   programs: PROGRAMS },
+  { id: "forge", label: "Forge", programs: ["FFM", "FW", "FC", "FAI"] },
+  { id: "live",  label: "Live",  programs: ["BFP", "VE", "L3C"] },
+];
 type Rep = { name: string; programs: string[] };
 
 // Date filter presets — written as "last N hours / days"
@@ -87,6 +92,7 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
 
   // Filters — seeded from URL params (so founder-dashboard drill-downs land pre-filtered)
   const [rep, setRep] = useState<string | null>(null);
+  const [family, setFamily] = useState<"all" | "forge" | "live">("all");
   const [stages, setStages] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<Set<string>>(new Set());
   const [minScore, setMinScore] = useState(0);
@@ -116,6 +122,10 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
     if (rep) {
       const repPrograms = REPS.find(r => r.name === rep)?.programs || [];
       xs = xs.filter(l => l.program && repPrograms.includes(l.program));
+    }
+    if (family !== "all") {
+      const allowed = FAMILIES.find(f => f.id === family)?.programs || [];
+      xs = xs.filter(l => l.program && allowed.includes(l.program));
     }
     if (stages.size)   xs = xs.filter(l => l.funnel_stage && stages.has(l.funnel_stage));
     if (programs.size) xs = xs.filter(l => l.program && programs.has(l.program));
@@ -224,6 +234,14 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
 
       {/* Filter rows */}
       <div className="space-y-2.5 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] uppercase tracking-wider text-fg-muted mr-1 w-16">Family</span>
+          {FAMILIES.map(f => (
+            <button key={f.id} className={`chip ${family === f.id ? "chip-active" : ""}`} onClick={() => setFamily(f.id)}>
+              {f.label}<span className="opacity-60 ml-1.5">{f.programs.length === PROGRAMS.length ? PROGRAMS.length : f.programs.join("·")}</span>
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] uppercase tracking-wider text-fg-muted mr-1 w-16">Rep</span>
           <button className={`chip ${!rep ? "chip-active" : ""}`} onClick={() => setRep(null)}>All</button>

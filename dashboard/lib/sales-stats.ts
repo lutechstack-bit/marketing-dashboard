@@ -118,14 +118,28 @@ export const fetchTopOpportunities = unstable_cache(
       if (!incentiveByProgram[a.product_code]) incentiveByProgram[a.product_code] = a.incentive_inr;
     }
 
-    // Pull paid app-fee leads in those programs, top 20 by score, then we
-    // pick the 5 with stalest activity (highest score × longest gap = best
-    // candidates for outreach).
+    // KEY FIX: only show leads where THIS rep has a locked earning. If the
+    // app_fee_paid happened organically (lead self-paid via Tally → Razorpay
+    // direct, no rep call), there's no earning row → rep gets nothing for
+    // pushing to balance. Don't show those, they're not motivational.
+    const { data: lockedEarnings, error: earnErr } = await supabase
+      .from("incentive_earnings")
+      .select("lead_id,amount_inr")
+      .eq("rep_id", repId)
+      .eq("status", "locked");
+    if (earnErr || !lockedEarnings || lockedEarnings.length === 0) return [];
+
+    const earningByLead: Record<string, number> = {};
+    for (const e of lockedEarnings as any[]) {
+      if (e.lead_id) earningByLead[e.lead_id] = e.amount_inr;
+    }
+    const lockedLeadIds = Object.keys(earningByLead);
+
+    // Pull only those leads (still capped by score for ranking)
     const { data: leads, error } = await supabase
       .from("leads")
       .select("id,name,email,phone,program,score,funnel_stage,last_activity")
-      .eq("funnel_stage", "app_fee_paid")
-      .in("program", programs)
+      .in("id", lockedLeadIds)
       .order("score", { ascending: false })
       .limit(20);
     if (error || !leads) return [];
@@ -139,10 +153,10 @@ export const fetchTopOpportunities = unstable_cache(
         score: l.score || 0, funnel_stage: l.funnel_stage,
         last_activity: l.last_activity,
         hours_since_activity: hours,
-        incentive_amount: incentiveByProgram[l.program || ""] || 0,
+        incentive_amount: earningByLead[l.id] || 0,  // real locked amount, not assumed
         reason: hours > 48
-          ? `Score ${l.score}. ${Math.round(hours / 24)}d since last touch — needs a nudge.`
-          : `Score ${l.score}. Paid app fee, hot moment.`,
+          ? `₹${earningByLead[l.id]} locked. ${Math.round(hours / 24)}d cold — push to balance.`
+          : `₹${earningByLead[l.id]} locked. Push to balance to unlock.`,
       } as TopOpportunity;
     });
 
@@ -160,15 +174,18 @@ export const fetchTopOpportunities = unstable_cache(
 );
 
 // ============================================================================
-// MONEY ON THE TABLE — abandoned leads × this rep's incentive amount
+// MONEY ON THE TABLE — pool of leads the rep can convert for their incentive
 // ============================================================================
-// Incentive rule (founder-confirmed): rep earns when they push a lead from
-// form_submitted (Abandoned) → app_fee_paid (paid app fee). NO incentive for
-// partials filling the form, NO incentive for booking interview. The earning
-// LOCKS at app_fee_paid and UNLOCKS when the lead pays balance.
-//
-// So the "earn-able right now" pool = abandoned leads × the rep's per-program
-// incentive amount. This is the primary motivational number.
+// Incentive rule (founder-confirmed):
+//   · Rep earns the per-program incentive (₹5k / ₹6.5k / etc.) when they
+//     drive a conversion FROM (form_partial OR form_submitted) TO app_fee_paid.
+//   · The earning LOCKS at the conversion event, UNLOCKS when the lead
+//     subsequently pays the balance fee.
+//   · Direct/organic conversions (lead self-paid via Tally → Razorpay without
+//     a rep call) do NOT earn the rep — but those still count toward the
+//     "potential pool" because if a rep called the lead and they then paid,
+//     the rep would still get credit (we attribute on the conversion event).
+//   · No incentive for booking interview (app_fee_paid → accepted).
 
 export type EarnableNow = {
   total_count: number;
@@ -215,13 +232,15 @@ export const fetchEarnableNow = unstable_cache(
     const programs = Object.keys(incentiveByProgram);
     if (programs.length === 0) return empty;
 
-    // 2. Per-program count of abandoned leads (form_submitted)
+    // 2. Per-program count of leads at form_partial OR form_submitted —
+    //    BOTH are convertible to app_fee_paid (the earning event). Founder
+    //    confirmed reps earn for converting either bucket.
     const counts = await Promise.all(programs.map(async (p) => {
       const { count } = await supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("program", p)
-        .eq("funnel_stage", "form_submitted");
+        .in("funnel_stage", ["form_partial", "form_submitted"]);
       return { program: p, count: count || 0 };
     }));
 
@@ -237,11 +256,11 @@ export const fetchEarnableNow = unstable_cache(
     const total_count = by_program.reduce((s, p) => s + p.count, 0);
     const total_potential_earnings = by_program.reduce((s, p) => s + p.total, 0);
 
-    // 3. Top 8 abandoned leads to call (highest score across rep's programs)
+    // 3. Top 8 highest-MQL leads in the conversion pool (partial + submitted)
     const { data: topLeads } = await supabase
       .from("leads")
       .select("id,name,email,phone,program,score,last_activity")
-      .eq("funnel_stage", "form_submitted")
+      .in("funnel_stage", ["form_partial", "form_submitted"])
       .in("program", programs)
       .order("score", { ascending: false })
       .order("last_activity", { ascending: false, nullsFirst: false })
