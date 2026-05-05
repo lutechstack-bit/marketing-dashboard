@@ -127,6 +127,48 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, active });
   }
 
+  // Approve a self-signed-up user: flip active=true, optionally update role +
+  // insert rep_assignments. This is the admin-side counterpart to /api/auth/signup.
+  if (action === "approve") {
+    const { id, role, assignments } = body;
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    const updates: any = { active: true };
+    if (role) {
+      if (!["sales", "founder", "admin"].includes(role)) return NextResponse.json({ error: "invalid role" }, { status: 400 });
+      updates.role = role;
+    }
+    const { error: upErr } = await supabase.from("sales_reps").update(updates).eq("id", id);
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+
+    if (Array.isArray(assignments)) {
+      for (const a of assignments) {
+        if (!a.product_code || !a.incentive_inr) continue;
+        await supabase.from("rep_assignments").insert({
+          rep_id: id,
+          product_code: a.product_code,
+          edition_match: a.edition_match || null,
+          edition_label: a.edition_label || null,
+          incentive_inr: a.incentive_inr,
+          notes: a.notes || null,
+          active: true,
+        });
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Reject (delete) a self-signed-up user — removes both auth user and sales_reps row.
+  if (action === "reject") {
+    const { id } = body;
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+    const admin = adminClient();
+    // Order matters: delete sales_reps first (FK to auth.users may cascade)
+    await supabase.from("rep_assignments").delete().eq("rep_id", id);
+    await supabase.from("sales_reps").delete().eq("id", id);
+    try { await admin.auth.admin.deleteUser(id); } catch { /* if already gone, fine */ }
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "send_password_link") {
     const { id, email } = body;
     if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });

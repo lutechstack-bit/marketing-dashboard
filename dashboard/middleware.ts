@@ -16,6 +16,7 @@ const SALES_ALLOWED = ["/queue", "/leads", "/leaderboard", "/login", "/auth"];
 // Public — no auth check at all
 const PUBLIC_PREFIXES = [
   "/login", "/auth",
+  "/api/auth/signup",                 // self-signup (rate-limited, creates inactive user)
   "/api/webhook/",                    // Tally / Razorpay / Calendly webhooks
   "/api/debug/",                      // diagnostic endpoints
   "/api/maintenance/",                // one-off bulk ops (gated by env)
@@ -77,10 +78,15 @@ export async function middleware(req: NextRequest) {
     .maybeSingle();
 
   if (!rep || !rep.active) {
-    // Auth user exists but no rep row, or deactivated → kick to login w/ message
+    // Sign them out so the next attempt is clean — otherwise they're stuck in a
+    // logged-in-but-blocked loop.
+    await supabase.auth.signOut();
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("error", "no_access");
+    // Differentiate: rep row exists but inactive = pending admin approval.
+    // No rep row at all = an orphan auth user (shouldn't happen via /signup but
+    // could happen if admin deletes the row manually).
+    url.searchParams.set("error", rep ? "pending_approval" : "no_access");
     return NextResponse.redirect(url);
   }
 
