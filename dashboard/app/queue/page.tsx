@@ -6,6 +6,7 @@ import EarningsHeader from "@/components/EarningsHeader";
 import QueueClient from "@/components/QueueClient";
 import TasksPanel from "@/components/TasksPanel";
 import TodaysProgress from "@/components/TodaysProgress";
+import MoneyOnTheTable from "@/components/MoneyOnTheTable";
 import TopOpportunities from "@/components/TopOpportunities";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +92,7 @@ export default async function QueuePage() {
           <>
             <EarningsHeader repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
             <TodaysProgress repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
+            <MoneyOnTheTable repId={currentRep.id} />
             <TopOpportunities repId={currentRep.id} />
           </>
         )}

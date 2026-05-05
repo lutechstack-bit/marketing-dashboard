@@ -158,3 +158,108 @@ export const fetchTopOpportunities = unstable_cache(
   ["fetch-top-opportunities-v1"],
   { revalidate: 60, tags: ["leads"] },
 );
+
+// ============================================================================
+// MONEY ON THE TABLE — abandoned leads × this rep's incentive amount
+// ============================================================================
+// Incentive rule (founder-confirmed): rep earns when they push a lead from
+// form_submitted (Abandoned) → app_fee_paid (paid app fee). NO incentive for
+// partials filling the form, NO incentive for booking interview. The earning
+// LOCKS at app_fee_paid and UNLOCKS when the lead pays balance.
+//
+// So the "earn-able right now" pool = abandoned leads × the rep's per-program
+// incentive amount. This is the primary motivational number.
+
+export type EarnableNow = {
+  total_count: number;
+  total_potential_earnings: number;
+  by_program: Array<{
+    program: string;
+    count: number;
+    incentive_per_lead: number;
+    total: number;
+  }>;
+  top_leads: Array<{
+    lead_id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    program: string;
+    score: number;
+    last_activity: string | null;
+    incentive_amount: number;
+    hours_since_activity: number;
+  }>;
+};
+
+export const fetchEarnableNow = unstable_cache(
+  async (repId: string): Promise<EarnableNow> => {
+    const empty: EarnableNow = { total_count: 0, total_potential_earnings: 0, by_program: [], top_leads: [] };
+
+    // 1. What programs is this rep assigned to + their per-product incentive?
+    const { data: assignments } = await supabase
+      .from("rep_assignments")
+      .select("product_code,incentive_inr")
+      .eq("rep_id", repId).eq("active", true);
+    if (!assignments || assignments.length === 0) return empty;
+
+    // If rep has multiple assignment rows for the same product (e.g. FC Goa +
+    // FC Bali), use the highest. Bulk forecast can't know which edition each
+    // lead picked without joining form_submissions; the highest amount is the
+    // motivationally honest "best case" framing.
+    const incentiveByProgram: Record<string, number> = {};
+    for (const a of assignments as any[]) {
+      const cur = incentiveByProgram[a.product_code] || 0;
+      if (a.incentive_inr > cur) incentiveByProgram[a.product_code] = a.incentive_inr;
+    }
+    const programs = Object.keys(incentiveByProgram);
+    if (programs.length === 0) return empty;
+
+    // 2. Per-program count of abandoned leads (form_submitted)
+    const counts = await Promise.all(programs.map(async (p) => {
+      const { count } = await supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("program", p)
+        .eq("funnel_stage", "form_submitted");
+      return { program: p, count: count || 0 };
+    }));
+
+    const by_program = counts
+      .map(c => ({
+        program: c.program,
+        count: c.count,
+        incentive_per_lead: incentiveByProgram[c.program] || 0,
+        total: c.count * (incentiveByProgram[c.program] || 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const total_count = by_program.reduce((s, p) => s + p.count, 0);
+    const total_potential_earnings = by_program.reduce((s, p) => s + p.total, 0);
+
+    // 3. Top 8 abandoned leads to call (highest score across rep's programs)
+    const { data: topLeads } = await supabase
+      .from("leads")
+      .select("id,name,email,phone,program,score,last_activity")
+      .eq("funnel_stage", "form_submitted")
+      .in("program", programs)
+      .order("score", { ascending: false })
+      .order("last_activity", { ascending: false, nullsFirst: false })
+      .limit(8);
+
+    const now = Date.now();
+    const top_leads = (topLeads || []).map((l: any) => ({
+      lead_id: l.id,
+      name: l.name, email: l.email, phone: l.phone,
+      program: l.program,
+      score: l.score || 0,
+      last_activity: l.last_activity,
+      incentive_amount: incentiveByProgram[l.program || ""] || 0,
+      hours_since_activity: l.last_activity ? (now - new Date(l.last_activity).getTime()) / 3_600_000 : 999,
+    }));
+
+    return { total_count, total_potential_earnings, by_program, top_leads };
+  },
+  ["fetch-earnable-now-v1"],
+  { revalidate: 60, tags: ["leads"] },
+);
