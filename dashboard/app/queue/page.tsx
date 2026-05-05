@@ -16,8 +16,10 @@ export default async function QueuePage() {
   // (queue uses last_action for the status dropdown; payments/submissions
   // aren't shown on this list view, so we skip them).
   const [leads, bookings, earningsRes] = await Promise.all([
+    // Top 800 actionable leads by score = plenty for the queue (covers all 6
+    // programs × ~130 leads each at the top of the priority list).
     fetchLeads({
-      limit: 1500,
+      limit: 800,
       stages: ["form_partial", "form_submitted", "app_fee_paid", "accepted"],
       enrichments: ["activities"],
     }),

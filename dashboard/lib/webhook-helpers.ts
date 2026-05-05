@@ -103,6 +103,11 @@ export async function upsertLead(input: {
 
     const { data, error } = await supabase.from("leads").update(updates).eq("id", existing.id).select().single();
     if (error) { console.error("upsertLead update error:", error.message); return existing; }
+    // Bust the dashboard's leads cache so the next page render sees the change
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("leads");
+    } catch { /* not in app context */ }
     return data;
   }
 
@@ -119,6 +124,10 @@ export async function upsertLead(input: {
     last_activity: new Date().toISOString(),
   }).select().single();
   if (error) { console.error("upsertLead insert error:", error.message); return null; }
+  try {
+    const { revalidateTag } = await import("next/cache");
+    revalidateTag("leads");
+  } catch { /* not in app context */ }
   return data;
 }
 

@@ -64,6 +64,7 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
                 <Link
                   key={n.href}
                   href={n.href}
+                  prefetch={true}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors text-fg-muted hover:text-forge-black hover:bg-forge-yellow-pale whitespace-nowrap font-medium"
                 >
                   <Icon className="w-3.5 h-3.5" />{n.label}

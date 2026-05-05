@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
 
 const url = process.env.SUPABASE_URL!;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -6,6 +7,12 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export const supabase = createClient(url, key, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+
+/** Invalidate the lead-list cache. Call from webhooks when leads change. */
+export async function invalidateLeadsCache() {
+  const { revalidateTag } = await import("next/cache");
+  revalidateTag("leads");
+}
 
 export type LeadRow = {
   id: string;
@@ -80,12 +87,45 @@ export type LeadActivityRow = {
  * · Each enrichment is opt-in — pages should request only what they show
  *   on screen. /queue needs activities (last_action). /leads needs payments
  *   + activities. /insights needs nothing → use fetchLeadsLight.
+ * · Wrapped in unstable_cache (30s TTL) so navigating between dashboard
+ *   tabs doesn't re-run the same heavy queries. Webhooks should call
+ *   invalidateLeadsCache() to bust the cache when leads change.
  *
  * Default enrichments = [] (none) for new callers. Pass enrichments to opt in.
  */
 type EnrichmentKey = "payments" | "activities" | "submissions";
 
 export async function fetchLeads(opts: {
+  programs?: string[];
+  stages?: string[];
+  minScore?: number;
+  limit?: number;
+  enrichments?: EnrichmentKey[];
+} = {}): Promise<LeadRow[]> {
+  // Stable cache key from opts
+  const key = JSON.stringify({
+    programs: (opts.programs || []).sort(),
+    stages: (opts.stages || []).sort(),
+    minScore: opts.minScore ?? null,
+    limit: opts.limit ?? 500,
+    enrichments: (opts.enrichments || []).sort(),
+  });
+  return cachedFetchLeads(key, opts);
+}
+
+const cachedFetchLeads = unstable_cache(
+  async (_cacheKey: string, opts: {
+    programs?: string[];
+    stages?: string[];
+    minScore?: number;
+    limit?: number;
+    enrichments?: EnrichmentKey[];
+  }) => fetchLeadsImpl(opts),
+  ["fetch-leads-v2"],
+  { revalidate: 30, tags: ["leads"] },
+);
+
+async function fetchLeadsImpl(opts: {
   programs?: string[];
   stages?: string[];
   minScore?: number;
@@ -278,30 +318,36 @@ export async function getLeadDetail(leadId: string) {
   };
 }
 
-export async function fetchLeadStats() {
-  const stages = ["form_partial","form_submitted","app_fee_paid","accepted","confirmed","balance_paid","lost"];
-  const programs = ["FFM","FW","FC","FAI"];
+// Cached: 60s TTL. The numbers don't change frequently and the underlying
+// 13 parallel count queries are still expensive on a 41k-row table.
+export const fetchLeadStats = unstable_cache(
+  async () => {
+    const stages = ["form_partial","form_submitted","app_fee_paid","accepted","confirmed","balance_paid","lost"];
+    const programs = ["FFM","FW","FC","FAI"];
 
-  const [totalRes, hotRes, ...rest] = await Promise.all([
-    supabase.from("leads").select("*", { count: "exact", head: true }),
-    supabase.from("leads").select("*", { count: "exact", head: true }).gte("score", 75),
-    ...stages.map(s => supabase.from("leads").select("*", { count: "exact", head: true }).eq("funnel_stage", s)),
-    ...programs.map(p => supabase.from("leads").select("*", { count: "exact", head: true }).eq("program", p)),
-  ]);
+    const [totalRes, hotRes, ...rest] = await Promise.all([
+      supabase.from("leads").select("*", { count: "exact", head: true }),
+      supabase.from("leads").select("*", { count: "exact", head: true }).gte("score", 75),
+      ...stages.map(s => supabase.from("leads").select("*", { count: "exact", head: true }).eq("funnel_stage", s)),
+      ...programs.map(p => supabase.from("leads").select("*", { count: "exact", head: true }).eq("program", p)),
+    ]);
 
-  const stageResults = rest.slice(0, stages.length);
-  const programResults = rest.slice(stages.length);
+    const stageResults = rest.slice(0, stages.length);
+    const programResults = rest.slice(stages.length);
 
-  const by_stage: Record<string, number> = {};
-  stages.forEach((s, i) => { by_stage[s] = stageResults[i].count || 0; });
-  const by_program: Record<string, number> = {};
-  programs.forEach((p, i) => { by_program[p] = programResults[i].count || 0; });
+    const by_stage: Record<string, number> = {};
+    stages.forEach((s, i) => { by_stage[s] = stageResults[i].count || 0; });
+    const by_program: Record<string, number> = {};
+    programs.forEach((p, i) => { by_program[p] = programResults[i].count || 0; });
 
-  return {
-    total: totalRes.count || 0,
-    by_stage,
-    by_program,
-    rescue_zone: by_stage["accepted"] || 0,
-    hot_75plus: hotRes.count || 0,
-  };
-}
+    return {
+      total: totalRes.count || 0,
+      by_stage,
+      by_program,
+      rescue_zone: by_stage["accepted"] || 0,
+      hot_75plus: hotRes.count || 0,
+    };
+  },
+  ["fetch-lead-stats-v1"],
+  { revalidate: 60, tags: ["leads"] },
+);
