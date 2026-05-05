@@ -138,18 +138,18 @@ export async function GET(req: Request) {
       continue;
     }
 
-    // 3. Upsert rep_assignments (if any)
+    // 3. Upsert rep_assignments (if any) — dedup by (rep, product, edition_match)
     let assignmentsCreated = 0;
     if (u.assignments && u.assignments.length > 0) {
       for (const a of u.assignments) {
-        // Check if already exists for (rep_id, product_code, edition_match)
-        const { data: existing } = await admin.from("rep_assignments")
+        let existsQ = admin.from("rep_assignments")
           .select("id")
           .eq("rep_id", userId)
           .eq("product_code", a.product_code)
-          .is("active", true)
-          .limit(1);
-        // If exact match for edition exists, skip
+          .eq("active", true);
+        if (a.edition_match) existsQ = existsQ.eq("edition_match", a.edition_match);
+        else                  existsQ = existsQ.is("edition_match", null);
+        const { data: existing } = await existsQ.limit(1);
         if (existing && existing.length > 0) continue;
 
         const { error: aerr } = await admin.from("rep_assignments").insert({
