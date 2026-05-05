@@ -466,8 +466,15 @@ function TimelineRow({ event }: { event: { ts: string; type: string; body: any }
   const ago = timeAgo(event.ts);
   if (event.type === "form") {
     const s = event.body as FormSubmissionRow;
+    const isCsv = s.form_id === "csv_import";
     return (
-      <Row icon={<FileText className="w-4 h-4 text-cyan-600"/>} title={s.is_completed ? "Form submitted" : "Form started (partial)"} subtitle={s.form_name || s.form_id} ts={event.ts} ago={ago} />
+      <Row
+        icon={<FileText className="w-4 h-4 text-cyan-600"/>}
+        title={isCsv ? "Lead imported from TeleCRM" : (s.is_completed ? "Form submitted" : "Form started (partial)")}
+        subtitle={isCsv ? "(original submission date unknown)" : (s.form_name || s.form_id)}
+        ts={event.ts}
+        ago={isCsv ? "" : ago}
+      />
     );
   }
   if (event.type === "payment") {

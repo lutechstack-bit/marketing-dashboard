@@ -30,13 +30,11 @@ export async function POST(req: Request) {
   const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
     { auth: { autoRefreshToken: false, persistSession: false } });
 
-  // Step 1: NULL out submitted_at on csv_import rows.
-  // (We can't bulk-null via PostgREST patch in one call without filter; use update().)
-  const { error: subErr, count: subUpdated } = await admin
-    .from("form_submissions")
-    .update({ submitted_at: null as any }, { count: "exact" })
-    .eq("form_id", "csv_import");
-  if (subErr) return NextResponse.json({ error: `step 1: ${subErr.message}` }, { status: 500 });
+  // (Step 1 was: null out submitted_at on csv_import rows. Skipped because
+  // form_submissions.submitted_at has a NOT NULL constraint. Instead the
+  // LeadDetailClient timeline shows csv_import rows with a "(date unknown,
+  // imported)" subtitle so users aren't misled.)
+  const subUpdated = 0;
 
   // Step 2: find leads that have ONLY csv_import submissions.
   // Walk in pages so we don't OOM on 41k leads.
