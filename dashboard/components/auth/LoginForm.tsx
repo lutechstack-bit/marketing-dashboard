@@ -16,11 +16,12 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
   const [fullName, setFullName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const diag = params.get("diag");
   const initialMsg =
     initialError === "pending_approval"
       ? "Your account is awaiting admin approval. We'll let you in once a founder reviews it."
       : initialError === "no_access"
-      ? "Your account is inactive or hasn't been set up yet. Contact an admin."
+      ? `Your account is inactive or hasn't been set up yet. Contact an admin.${diag ? ` (diag: ${diag})` : ""}`
       : null;
   const [error, setError] = useState<string | null>(initialMsg);
   const [pending, setPending] = useState(initialError === "pending_approval");

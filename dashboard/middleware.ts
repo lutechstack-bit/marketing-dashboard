@@ -6,22 +6,23 @@
 // Anonymous users:          redirected to /login
 //
 // Public routes:            /login, /api/webhook/*, /api/debug/*, static assets
+//
+// Implementation note: this runs on the Vercel Edge runtime where supabase-js
+// can be flaky. The role lookup uses raw fetch() against PostgREST instead of
+// supabase-js — it's a single HTTP call and gives us reliable diagnostics.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 
-// Pages a sales rep is ALLOWED to visit. Anything else they get redirected.
 const SALES_ALLOWED = ["/queue", "/leads", "/leaderboard", "/login", "/auth"];
 
-// Public — no auth check at all
 const PUBLIC_PREFIXES = [
   "/login", "/auth",
-  "/api/auth/signup",                 // self-signup (rate-limited, creates inactive user)
-  "/api/webhook/",                    // Tally / Razorpay / Calendly webhooks
-  "/api/debug/",                      // diagnostic endpoints
-  "/api/maintenance/",                // one-off bulk ops (gated by env)
-  "/api/admin/invite-users",          // bootstrap (gated by ADMIN_BOOTSTRAP_TOKEN)
+  "/api/auth/signup",
+  "/api/webhook/",
+  "/api/debug/",
+  "/api/maintenance/",
+  "/api/admin/invite-users",
   "/_next/", "/favicon", "/static/",
 ];
 
@@ -29,19 +30,54 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some(p => pathname.startsWith(p));
 }
 
+/**
+ * Look up sales_reps by id using raw PostgREST + service-role key.
+ * Bypasses RLS. Returns null on any error or if no row is found, plus a
+ * diagnostic string we can pin to the redirect URL or response header.
+ */
+async function fetchRep(userId: string): Promise<{
+  rep: { role: string; active: boolean } | null;
+  diag: string;
+}> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return { rep: null, diag: "missing_env" };
+
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/sales_reps?id=eq.${encodeURIComponent(userId)}&select=role,active`,
+      {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!r.ok) {
+      return { rep: null, diag: `pg_${r.status}` };
+    }
+    const arr = (await r.json()) as Array<{ role: string; active: boolean }>;
+    if (!Array.isArray(arr) || arr.length === 0) {
+      return { rep: null, diag: "no_row" };
+    }
+    return { rep: arr[0], diag: "ok" };
+  } catch (e: any) {
+    return { rep: null, diag: `fetch_err:${(e?.message || "unknown").slice(0, 40)}` };
+  }
+}
+
 export async function middleware(req: NextRequest) {
   let response = NextResponse.next({ request: req });
   const pathname = req.nextUrl.pathname;
 
-  // If auth env vars aren't configured yet, run as if there's no auth gate.
-  // This keeps the site functional until the operator finishes setup.
+  // Pre-bootstrap: no auth env → run unguarded
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return response;
   }
-
   if (isPublic(pathname)) return response;
 
-  // Build a Supabase client wired to the response cookies so session refresh persists
+  // Cookie-based client for session refresh
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -52,18 +88,16 @@ export async function middleware(req: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
           response = NextResponse.next({ request: req });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, options),
           );
         },
       },
-    }
+    },
   );
 
   // IMPORTANT: don't introduce code between createServerClient and getUser.
-  // It can break the session refresh.
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Not logged in → push to /login (unless they're already there)
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -71,59 +105,35 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Logged in — fetch role from sales_reps. Use the service-role key to
-  // bypass RLS (the user is already authenticated via the cookie client above;
-  // we just need to look up their role/active flag).
-  let rep: { role: string; active: boolean } | null = null;
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const admin = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    );
-    const { data } = await admin
-      .from("sales_reps")
-      .select("role,active")
-      .eq("id", user.id)
-      .maybeSingle();
-    rep = data as any;
-  } else {
-    // Fallback: anon-key client (will fail silently if RLS blocks it)
-    const { data } = await supabase
-      .from("sales_reps")
-      .select("role,active")
-      .eq("id", user.id)
-      .maybeSingle();
-    rep = data as any;
-  }
+  // Look up role via raw fetch (Edge-safe, RLS-bypassing)
+  const { rep, diag } = await fetchRep(user.id);
+
+  // Surface the diagnostic in the response header so we can verify the lookup
+  // is working without redeploying. Read with: curl -I https://.../some-page
+  response.headers.set("x-mw-rep-diag", diag);
 
   if (!rep || !rep.active) {
-    // Sign them out so the next attempt is clean — otherwise they're stuck in a
-    // logged-in-but-blocked loop.
-    await supabase.auth.signOut();
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    // Differentiate: rep row exists but inactive = pending admin approval.
-    // No rep row at all = an orphan auth user (shouldn't happen via /signup but
-    // could happen if admin deletes the row manually).
+    // Pin the diagnostic to the URL so it's visible in the browser too
     url.searchParams.set("error", rep ? "pending_approval" : "no_access");
+    if (diag !== "ok" && diag !== "no_row") url.searchParams.set("diag", diag);
     return NextResponse.redirect(url);
   }
 
   const role = rep.role as "sales" | "founder" | "admin";
+  response.headers.set("x-mw-role", role);
 
-  // Sales reps can only access whitelisted prefixes
+  // Sales reps: only whitelisted prefixes
   if (role === "sales") {
-    const allowed = SALES_ALLOWED.some(p => pathname.startsWith(p))
-      || pathname === "/" /* will redirect below */
-      || pathname.startsWith("/api/activities")  // status dropdown
-      || pathname.startsWith("/api/ai/");        // AI brief on lead detail
     if (pathname === "/" || pathname.startsWith("/insights") || pathname.startsWith("/admin")) {
-      // Redirect sales away from founder/admin pages
       const url = req.nextUrl.clone();
       url.pathname = "/queue";
       return NextResponse.redirect(url);
     }
+    const allowed = SALES_ALLOWED.some(p => pathname.startsWith(p))
+      || pathname.startsWith("/api/activities")
+      || pathname.startsWith("/api/ai/");
     if (!allowed) {
       const url = req.nextUrl.clone();
       url.pathname = "/queue";
@@ -131,23 +141,9 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Founders can access everything except /admin pages (admins only)
-  if (role === "founder" && pathname.startsWith("/admin")) {
-    // For now founders get admin too — change this branch if you want to split
-    // (kept permissive per founder request: "founders + management get admin")
-  }
-
   return response;
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico
-     */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
