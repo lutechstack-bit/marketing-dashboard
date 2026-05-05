@@ -188,8 +188,10 @@ export function buildInsights(input: {
     const avg_mql = scoreableScores.length
       ? Math.round(scoreableScores.reduce((s, x) => s + x, 0) / scoreableScores.length) : 0;
     const median_mql = median(scoreableScores);
-    const hot_count = scoreableCur.filter(l => l.score >= 50).length;
-    const super_hot_count = scoreableCur.filter(l => l.score >= 70).length;
+    // v3 thresholds (max 90): HOT 75+ · WARM 60-74 · OK 45-59 · COLD 30-44 · JUNK <30
+    // hot_count = WARM+ ("qualified" = worth direct human outreach per methodology)
+    const hot_count = scoreableCur.filter(l => l.score >= 60).length;
+    const super_hot_count = scoreableCur.filter(l => l.score >= 75).length;
     const hot_pct = scoreableCur.length ? Math.round(1000 * hot_count / scoreableCur.length) / 10 : 0;
 
     // Signals (only across scoreable leads — non-scoreable have no breakdown)
@@ -206,7 +208,7 @@ export function buildInsights(input: {
     const prevAvg = scoreablePrev.length
       ? Math.round(scoreablePrev.map(l => l.score || 0).reduce((s, x) => s + x, 0) / scoreablePrev.length) : 0;
     const prevHotPct = scoreablePrev.length
-      ? Math.round(1000 * scoreablePrev.filter(l => l.score >= 50).length / scoreablePrev.length) / 10 : 0;
+      ? Math.round(1000 * scoreablePrev.filter(l => l.score >= 60).length / scoreablePrev.length) / 10 : 0;
     const delta_count = cur.length - prev.length;
     const delta_avg_mql = avg_mql - prevAvg;
     const delta_hot_pct = Math.round(10 * (hot_pct - prevHotPct)) / 10;
@@ -229,10 +231,12 @@ export function buildInsights(input: {
     const sparkline = sBuckets.map(b => b.n ? Math.round(b.sum / b.n) : 0);
 
     // MQL tier distribution
-    const t1 = scoreableCur.filter(l => (l.score || 0) < 30).length;
-    const t2 = scoreableCur.filter(l => (l.score || 0) >= 30 && (l.score || 0) < 50).length;
-    const t3 = scoreableCur.filter(l => (l.score || 0) >= 50 && (l.score || 0) < 70).length;
-    const t4 = scoreableCur.filter(l => (l.score || 0) >= 70).length;
+    // v3 thresholds (max 90)
+    const t1 = scoreableCur.filter(l => (l.score || 0) < 30).length;                                                  // JUNK
+    const t2 = scoreableCur.filter(l => (l.score || 0) >= 30 && (l.score || 0) < 45).length;                          // COLD
+    const t3 = scoreableCur.filter(l => (l.score || 0) >= 45 && (l.score || 0) < 60).length;                          // OK
+    const t4 = scoreableCur.filter(l => (l.score || 0) >= 60 && (l.score || 0) < 75).length;                          // WARM
+    const t5 = scoreableCur.filter(l => (l.score || 0) >= 75).length;                                                 // HOT
 
     // Marketing spend for this product in period (from sheet, prorated by overlap)
     const start = period.startMs, end = period.endMs;
@@ -278,10 +282,11 @@ export function buildInsights(input: {
         grant: distribute(sigBuckets.grant, GRANT_LABEL, scoreableCur.length).slice(0, 8),
       },
       tier_distribution: [
-        { tier: "Cold (<30)",       count: t1, color: "#CBD5E1" },
-        { tier: "Warm (30-49)",     count: t2, color: "#06B6D4" },
-        { tier: "Hot (50-69)",      count: t3, color: "#10B981" },
-        { tier: "Super Hot (70+)",  count: t4, color: "#F59E0B" },
+        { tier: "❄ Junk (<30)",   count: t1, color: "#CBD5E1" },
+        { tier: "Cold (30-44)",   count: t2, color: "#94A3B8" },
+        { tier: "OK (45-59)",     count: t3, color: "#06B6D4" },
+        { tier: "⚡ Warm (60-74)", count: t4, color: "#10B981" },
+        { tier: "🔥 Hot (75+)",    count: t5, color: "#F59E0B" },
       ],
       top10,
     };
@@ -298,8 +303,8 @@ export function buildInsights(input: {
   const familyScores = familyScoreableLeads.map(l => l.score || 0);
   const avgMql = familyScores.length ? Math.round(familyScores.reduce((s, x) => s + x, 0) / familyScores.length) : 0;
   const medianMql = median(familyScores);
-  const hot = familyScoreableLeads.filter(l => (l.score || 0) >= 50).length;
-  const superHot = familyScoreableLeads.filter(l => (l.score || 0) >= 70).length;
+  const hot = familyScoreableLeads.filter(l => (l.score || 0) >= 60).length;
+  const superHot = familyScoreableLeads.filter(l => (l.score || 0) >= 75).length;
   const hotPct = familyScoreableLeads.length ? Math.round(1000 * hot / familyScoreableLeads.length) / 10 : 0;
 
   const prevTotalLeads = leads.filter(l => productCodes.includes(l.program || "")

@@ -68,12 +68,16 @@ export async function GET(req: Request) {
         Object.assign(responses, s.responses);
         if (!earliest || s.submitted_at < earliest) earliest = s.submitted_at;
       }
-      const { score, breakdown } = scoreLead({ responses, submittedAt: earliest });
+      const { score, breakdown } = scoreLead({
+        responses,
+        submittedAt: earliest,
+        programCode: lead.program || "FFM", // fallback to FFM if program missing
+      });
       updates.push({ id: lead.id, score, score_breakdown: breakdown });
 
-      // Track movement
-      const oldT = (lead.score || 0) >= 50 ? "hot" : "cold";
-      const newT = score >= 50 ? "hot" : "cold";
+      // Track movement vs new thresholds (60+ = WARM or HOT)
+      const oldT = (lead.score || 0) >= 60 ? "warm+" : "below";
+      const newT = score >= 60 ? "warm+" : "below";
       const move = `${oldT}->${newT}`;
       distChange[move] = (distChange[move] || 0) + 1;
     }
@@ -87,13 +91,14 @@ export async function GET(req: Request) {
       else updated += batch.length;
     }
 
-    // Score distribution after rescore
-    const buckets = { "0-29": 0, "30-49": 0, "50-69": 0, "70-100": 0 };
+    // v3 thresholds, max 90
+    const buckets = { "junk_0-29": 0, "cold_30-44": 0, "ok_45-59": 0, "warm_60-74": 0, "hot_75plus": 0 };
     for (const u of updates) {
-      if (u.score < 30) buckets["0-29"]++;
-      else if (u.score < 50) buckets["30-49"]++;
-      else if (u.score < 70) buckets["50-69"]++;
-      else buckets["70-100"]++;
+      if (u.score < 30) buckets["junk_0-29"]++;
+      else if (u.score < 45) buckets["cold_30-44"]++;
+      else if (u.score < 60) buckets["ok_45-59"]++;
+      else if (u.score < 75) buckets["warm_60-74"]++;
+      else buckets["hot_75plus"]++;
     }
 
     return NextResponse.json({

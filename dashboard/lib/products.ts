@@ -116,3 +116,66 @@ export function productAccents(color: string) {
 export function familyLabel(f: Family): string {
   return f === "forge" ? "Forge" : "Live";
 }
+
+// ----------------------------------------------------------------
+// INCENTIVES — per-rep × per-product, INR. Founder-set, paid on Balance Payment.
+// FC has edition-specific amounts (Goa vs Bali); other products are flat.
+// ----------------------------------------------------------------
+
+export type IncentiveSpec =
+  | { default: number }
+  | { default: number; editions: { match: RegExp; amount: number; label: string }[] };
+
+export const INCENTIVES: Record<string, Record<string, IncentiveSpec>> = {
+  Pranaush: {
+    FFM: { default: 5000 },
+    FW:  { default: 6500 },
+  },
+  Sashank: {
+    FC:  {
+      default: 4500,
+      editions: [
+        { match: /bali/i, amount: 7000, label: "Bali" },
+        { match: /goa/i,  amount: 4500, label: "Goa" },
+      ],
+    },
+    FAI: { default: 8000 },
+    BFP: { default: 5000 },
+  },
+  Wilson: {
+    VE:  { default: 4000 },
+    L3C: { default: 6000 },
+  },
+};
+
+/** Find which rep is assigned to a given product code. */
+export function repForProduct(productCode: string): string | null {
+  for (const [rep, products] of Object.entries(INCENTIVES)) {
+    if (productCode in products) return rep;
+  }
+  return null;
+}
+
+/**
+ * Compute the incentive for a given lead.
+ *  - Looks up the rep assigned to the lead's product
+ *  - Falls back to per-product default unless the lead's edition answer matches a special edition
+ *  - Returns null if no incentive defined
+ */
+export function incentiveForLead(opts: {
+  productCode: string;
+  editionAnswer?: string | null;
+}): { rep: string | null; amount: number; label: string; productCode: string } | null {
+  const rep = repForProduct(opts.productCode);
+  if (!rep) return null;
+  const spec = INCENTIVES[rep][opts.productCode];
+  if (!spec) return null;
+  if ("editions" in spec && spec.editions && opts.editionAnswer) {
+    for (const e of spec.editions) {
+      if (e.match.test(opts.editionAnswer)) {
+        return { rep, amount: e.amount, label: `${opts.productCode} ${e.label}`, productCode: opts.productCode };
+      }
+    }
+  }
+  return { rep, amount: spec.default, label: opts.productCode, productCode: opts.productCode };
+}

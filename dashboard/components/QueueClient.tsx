@@ -12,8 +12,10 @@ import { whyHotReason } from "@/lib/insights";
 import {
   PRODUCTS, FAMILIES, PRODUCTS_BY_FAMILY, PRODUCT_BY_CODE,
   BUCKETS, BUCKET_ORDER, productAccents, familyLabel,
+  incentiveForLead,
   type Family, type BucketId,
 } from "@/lib/products";
+import { MAX_SCORE } from "@/lib/scoring";
 import StatusDropdown from "./StatusDropdown";
 import ColumnSettings, { COLUMN_DEFS, type ColumnId, defaultVisible, loadVisible } from "./ColumnSettings";
 
@@ -47,17 +49,15 @@ function bucketFor(l: LeadRow): BucketId | null {
   }
 }
 
-// Stub for incentive math — config-driven so user can edit one place.
-// TODO: when user sends real incentive ladder, populate this from a config file.
-function incentiveFor(score: number, bucketId: BucketId): { amount: number; label: string } | null {
-  // Simple inverse-linear stub: lower score → higher payout (harder to convert).
-  // base 1500, +20 per (100-score) point, capped 100% above for partials/abandoned.
-  if (bucketId === "partials") return null; // partials not yet incentivized
-  const base = bucketId === "abandoned" ? 1500 : 800; // app fee push pays more than booking push
-  const variable = Math.max(0, (100 - score)) * 18;
-  const amount = Math.round(base + variable);
-  const label = bucketId === "abandoned" ? "if app fee paid" : "if interview booked";
-  return { amount, label };
+// Real incentive lookup — per-rep × per-product × edition (FC Goa vs Bali).
+// Founder-set, paid on Balance Payment.
+function incentiveFor(lead: LeadRow): { amount: number; label: string; rep: string | null } | null {
+  if (!lead.program) return null;
+  // Edition detection requires form_submissions which we don't pull on the queue list.
+  // Default to non-edition match; FC Goa is the default. Detail page shows correct amount.
+  const result = incentiveForLead({ productCode: lead.program, editionAnswer: null });
+  if (!result) return null;
+  return { amount: result.amount, label: result.label, rep: result.rep };
 }
 
 // ----------------------------------------------------------------
@@ -421,7 +421,7 @@ function LeadsList({ leads, bucketId, family, visibleCols }: { leads: LeadRow[];
 function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; rank: number; bucketId: BucketId; visibleCols: Set<ColumnId> }) {
   const why = whyHotReason(lead);
   const submittedRecent = hoursSince(lead.first_seen) <= 1;
-  const incentive = incentiveFor(lead.score, bucketId);
+  const incentive = incentiveFor(lead);
   const show = (c: ColumnId) => visibleCols.has(c);
 
   return (
@@ -477,7 +477,8 @@ function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; ran
       {show("incentive") && (
         <td className="py-3 px-2 whitespace-nowrap">
           {incentive ? (
-            <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200" title={`Payout ${incentive.label}`}>
+            <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+              title={`${incentive.rep || "Rep"} earns this on Balance Payment for ${incentive.label}${lead.program === "FC" ? " (Goa default · Bali = ₹7,000)" : ""}`}>
               <IndianRupee className="w-3 h-3" />
               <span className="text-xs font-bold tabular-nums">{incentive.amount.toLocaleString("en-IN")}</span>
             </div>
@@ -514,20 +515,22 @@ function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; ran
 }
 
 function ScoreBadge({ score, breakdown }: { score: number; breakdown?: Record<string, number> }) {
-  // Tiers tuned to the new data-driven scoring (lib/scoring.ts):
-  //   70+ super hot — top 5-10% — convert at 25-50%
-  //   50-69 hot     — next ~15% — convert at 10-20%
-  //   30-49 warm    — next ~30% — convert at 3-8%
-  //   <30 cold      — bottom ~50% — convert at <2%
+  // v3 framework thresholds (lib/scoring.ts) — max score 90:
+  //   75-90 🔥 HOT   — convert ~21% — bg-amber-500
+  //   60-74 ⚡ WARM  — convert ~10% — bg-emerald-500
+  //   45-59  OK     — convert ~3%  — bg-cyan-100
+  //   30-44  COLD   — convert ~1%  — bg-slate-100
+  //   <30   ❄ JUNK  — skip          — bg-slate-50 muted
   let cls;
-  if (score >= 70)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";  // super hot
-  else if (score >= 50) cls = "bg-emerald-500 text-white shadow-sm";                     // hot
-  else if (score >= 30) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";          // warm
-  else                  cls = "bg-slate-100 text-slate-500 ring-1 ring-slate-200";       // cold
+  if (score >= 75)      cls = "bg-amber-500 text-white shadow-sm shadow-amber-500/30";
+  else if (score >= 60) cls = "bg-emerald-500 text-white shadow-sm";
+  else if (score >= 45) cls = "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200";
+  else if (score >= 30) cls = "bg-slate-100 text-slate-700 ring-1 ring-slate-300";
+  else                  cls = "bg-slate-50 text-slate-400 ring-1 ring-slate-200";
 
   const tooltip = breakdown && Object.keys(breakdown).length > 0
     ? Object.entries(breakdown).filter(([_, v]) => Number(v) > 0).map(([k, v]) => `${k.replace(/_/g, " ")}: +${v}`).join(" · ")
-    : `Score ${score}/100`;
+    : `Score ${score}/${MAX_SCORE}`;
 
   return (
     <div className={`inline-flex items-center justify-center w-8 h-8 rounded-md font-bold text-xs tabular-nums ${cls} cursor-help`} title={tooltip}>
