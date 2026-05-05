@@ -22,6 +22,7 @@
 import { unstable_cache } from "next/cache";
 import { supabase } from "./supabase";
 import { loadAll } from "./data";
+import { fetchMonthlySpend } from "./meta-ads";
 
 export type UnifiedKpis = {
   period: { ym: string; year: number; month: number; label: string };
@@ -29,8 +30,11 @@ export type UnifiedKpis = {
 
   // Marketing economics
   spend:        { now: number; prev: number };
-  spend_sheet:  number;     // sheets-tracked (Meta Ads, manual P&L)
-  spend_manual: number;     // manual_marketing_spend table (influencers etc)
+  spend_meta_api:    number;     // live from Meta Ads API (preferred)
+  spend_sheet:       number;     // fallback: sheets-tracked (manual P&L row)
+  spend_manual:      number;     // manual_marketing_spend table (influencers/agency)
+  spend_source:      "meta_api" | "sheet" | "missing";  // which one fed `spend.now`
+  spend_meta_synced: string | null;
 
   // Funnel — from Supabase, the truth
   total_leads:        { now: number; prev: number };  // leads created in this period
@@ -78,6 +82,15 @@ export const fetchUnifiedKpis = unstable_cache(
     const grossNow       = findActualValue(sheetData.actuals, "Gross P/L", latest.ym) ?? 0;
     const grossPrev      = findActualValue(sheetData.actuals, "Gross P/L", prev.ym) ?? 0;
 
+    // 1b. Live Meta Ads spend — prefer this over sheet when available
+    const [metaNow, metaPrev] = await Promise.all([
+      fetchMonthlySpend(latest.year, latest.month),
+      fetchMonthlySpend(prev.year,   prev.month),
+    ]);
+    const spendMetaNow  = metaNow?.spend_incl_gst  ?? 0;
+    const spendMetaPrev = metaPrev?.spend_incl_gst ?? 0;
+    const spendMetaSynced = metaNow?.fetched_at ?? null;
+
     // 2. Manual spend (influencers, agencies, etc.) — from Supabase
     let spendManualNow = 0, spendManualPrev = 0;
     try {
@@ -93,8 +106,25 @@ export const fetchUnifiedKpis = unstable_cache(
       spendManualPrev = (p.data || []).reduce((s, r: any) => s + Number(r.amount_inr || 0), 0);
     } catch { /* table may not exist — non-fatal */ }
 
-    const spendNow  = spendSheetNow  + spendManualNow;
-    const spendPrev = spendSheetPrev + spendManualPrev;
+    // Spend resolution: prefer Meta Ads API (live), fall back to sheet entry
+    // (manual P&L row). Manual_marketing_spend is ALWAYS additive (influencer
+    // / agency channels Meta API can't see).
+    let spendBaseNow:  number, spendBasePrev: number, spendSource: UnifiedKpis["spend_source"];
+    if (metaNow && spendMetaNow > 0) {
+      spendBaseNow  = spendMetaNow;
+      spendBasePrev = spendMetaPrev;
+      spendSource   = "meta_api";
+    } else if (spendSheetNow > 0) {
+      spendBaseNow  = spendSheetNow;
+      spendBasePrev = spendSheetPrev;
+      spendSource   = "sheet";
+    } else {
+      spendBaseNow  = 0;
+      spendBasePrev = 0;
+      spendSource   = "missing";
+    }
+    const spendNow  = spendBaseNow  + spendManualNow;
+    const spendPrev = spendBasePrev + spendManualPrev;
 
     // 3. Funnel counts from Supabase — by lead created_at within the period.
     //
@@ -154,9 +184,12 @@ export const fetchUnifiedKpis = unstable_cache(
     return {
       period: latest,
       prev,
-      spend:        { now: spendNow,  prev: spendPrev  },
-      spend_sheet:  spendSheetNow,
-      spend_manual: spendManualNow,
+      spend:             { now: spendNow,  prev: spendPrev  },
+      spend_meta_api:    spendMetaNow,
+      spend_sheet:       spendSheetNow,
+      spend_manual:      spendManualNow,
+      spend_source:      spendSource,
+      spend_meta_synced: spendMetaSynced,
       total_leads,
       app_fee_paid_count: app_fee_paid,
       confirmed_count:    confirmed,

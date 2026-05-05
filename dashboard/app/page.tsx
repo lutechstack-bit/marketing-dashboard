@@ -67,8 +67,17 @@ export default async function HomePage() {
               CAC = spend / confirmed (balance paid — true customer acquisition cost) */}
         {unifiedKpis && (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
-            <KpiCard label="Marketing Spend" value={inr(unifiedKpis.spend.now, { compact: true })} prevValue={unifiedKpis.spend.prev}
-              sublabel={`Sheets ${inr(unifiedKpis.spend_sheet, { compact: true })} + manual ${inr(unifiedKpis.spend_manual, { compact: true })}`}
+            <KpiCard
+              label="Marketing Spend"
+              value={inr(unifiedKpis.spend.now, { compact: true })}
+              prevValue={unifiedKpis.spend.prev}
+              sublabel={
+                unifiedKpis.spend_source === "meta_api"
+                  ? `🟢 Live · Meta ${inr(unifiedKpis.spend_meta_api, { compact: true })} + manual ${inr(unifiedKpis.spend_manual, { compact: true })}`
+                  : unifiedKpis.spend_source === "sheet"
+                  ? `📋 Sheet · ${inr(unifiedKpis.spend_sheet, { compact: true })} + manual ${inr(unifiedKpis.spend_manual, { compact: true })}`
+                  : "⚠ no spend data this month"
+              }
               invert icon={<Wallet className="w-4 h-4" />} />
             <KpiCard label="Revenue" value={inr(unifiedKpis.revenue.now, { compact: true })} prevValue={unifiedKpis.revenue.prev}
               sublabel="from operations · vs prev month" icon={<IndianRupee className="w-4 h-4" />} />
