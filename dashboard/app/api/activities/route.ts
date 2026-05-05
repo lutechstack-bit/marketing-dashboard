@@ -8,6 +8,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { STATUS_BY_ID } from "@/lib/statuses";
+import { getCurrentRep } from "@/lib/auth/supabase-server";
+import { createTask } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +62,23 @@ export async function POST(req: Request) {
     }
     await supabase.from("leads").update(updates).eq("id", lead_id);
 
-    // TODO: when TeleCRM API key arrives, push the same status update here.
-    // Estimated 30 minutes of work — gated on having the API key + endpoint docs.
+    // Auto-create a follow-up task when the rep flags one. Default: tomorrow
+    // 10am IST. Caller can override by passing followup_at in the body.
+    if (action === "scheduled_followup") {
+      const rep = await getCurrentRep();
+      const followupAt = body.followup_at
+        ? new Date(body.followup_at)
+        : (() => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(10, 0, 0, 0); return t; })();
+      await createTask({
+        lead_id,
+        assigned_to: rep?.id || null,
+        due_at: followupAt.toISOString(),
+        type: "callback",
+        notes: notes || "Follow up with lead",
+        created_by: rep?.id || null,
+        source: "activity_followup",
+      });
+    }
 
     return NextResponse.json({ ok: true, activity: data });
   } catch (e: any) {

@@ -13,6 +13,7 @@ import type { CalendlyBooking } from "@/lib/calendly";
 import type { AiWhyHot } from "@/lib/ai-insights";
 import { useEffect } from "react";
 import StatusDropdown from "./StatusDropdown";
+import ScheduleCallback from "./ScheduleCallback";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
   form_partial:   { label: "Form partial",   cls: "bg-forge-cream text-forge-black/70 ring-1 ring-fg-border" },
@@ -269,6 +270,10 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], curren
             disabled={submitting}
             className="w-full mt-2 px-3 py-2 text-sm rounded-md border border-rose-200 text-rose-700 bg-white hover:bg-rose-50 disabled:opacity-50"
           >Mark lost</button>
+
+          <div className="mt-3 pt-3 border-t border-fg-border/70">
+            <ScheduleCallback leadId={lead.id} onScheduled={() => router.refresh()} />
+          </div>
         </div>
         <div className="surface-card p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold uppercase tracking-wider mb-3 text-fg-text">Notes</h2>

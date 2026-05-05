@@ -4,6 +4,7 @@ import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import EarningsHeader from "@/components/EarningsHeader";
 import QueueClient from "@/components/QueueClient";
+import TasksPanel from "@/components/TasksPanel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -74,6 +75,12 @@ export default async function QueuePage() {
     if (!existing || t1 > t0) earningsByLead[e.lead_id] = e;
   }
 
+  // Build a small leadsById map for TasksPanel so it can render name/phone
+  // alongside each task. Only includes the leads currently loaded into the
+  // queue — task rows for leads outside this slice fall back to a stub.
+  const leadsById: Record<string, { id: string; name: string | null; email: string | null; phone: string | null; program: string | null }> = {};
+  for (const l of leads) leadsById[l.id] = { id: l.id, name: l.name, email: l.email, phone: l.phone, program: l.program };
+
   return (
     <>
       <Header />
@@ -81,6 +88,7 @@ export default async function QueuePage() {
         {currentRep && currentRep.role === "sales" && (
           <EarningsHeader repId={currentRep.id} repName={currentRep.full_name || currentRep.email.split("@")[0]} />
         )}
+        <TasksPanel leadsById={leadsById} />
         <QueueClient
           initialLeads={leads}
           bookedEmails={Array.from(bookedEmails)}

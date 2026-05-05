@@ -6,6 +6,7 @@ import { getCurrentRep } from "@/lib/auth/supabase-server";
 import HeaderClientControls from "./HeaderClientControls";
 import ForgeWordmark from "./ForgeWordmark";
 import ThemeToggle from "./ThemeToggle";
+import NotificationBell from "./NotificationBell";
 
 const SALES_NAV = [
   { href: "/queue",       label: "Queue",        icon: Phone },
@@ -79,6 +80,7 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
             Live
             {lastSync && <span className="ml-1 text-fg-subtle">· {lastSync}</span>}
           </div>
+          {rep && <NotificationBell />}
           <ThemeToggle />
           {rep && <HeaderClientControls email={rep.email} />}
         </div>
