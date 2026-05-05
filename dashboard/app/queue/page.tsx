@@ -12,20 +12,29 @@ export const maxDuration = 60;
 export default async function QueuePage() {
   const currentRep = await getCurrentRep();
 
-  // Parallel fetch — only actionable stages + only the activities enrichment.
-  // sort: "recent" so we pull the most recently active leads from EVERY
-  // program/stage (instead of cherry-picking only the highest-scoring ones,
-  // which previously squeezed out partials and small programs entirely).
-  // Real per-bucket-per-program counts come from a separate aggregate query
-  // (fetchQueueCounts) so the program tabs show the truth, not just what's
-  // in the loaded slice.
-  const [leads, queueCounts, bookings, earningsRes] = await Promise.all([
-    // Top 5000 actionable leads by most-recent activity, across the THREE
-    // queue buckets (partial / submitted / app_fee_paid). 'accepted' and
-    // beyond don't belong in the queue. Combined with caching this is fast.
+  // Load each bucket independently so each gets guaranteed representation.
+  // Previously we did a single fetchLeads with all three stages at limit 5000:
+  // when many imported leads share the same last_activity (today's import
+  // time), ties broke by score DESC — partials (score ~0) lost to submitted
+  // (score 30+) every time, leaving 0 partials in the slice.
+  //
+  // Three parallel queries × per-bucket limits = guaranteed coverage.
+  const [partialLeads, submittedLeads, paidLeads, queueCounts, bookings, earningsRes] = await Promise.all([
     fetchLeads({
-      limit: 5000,
-      stages: ["form_partial", "form_submitted", "app_fee_paid"],
+      limit: 1500,
+      stages: ["form_partial"],
+      enrichments: ["activities"],
+      sort: "recent",
+    }),
+    fetchLeads({
+      limit: 3000,
+      stages: ["form_submitted"],
+      enrichments: ["activities"],
+      sort: "recent",
+    }),
+    fetchLeads({
+      limit: 1500,
+      stages: ["app_fee_paid"],
       enrichments: ["activities"],
       sort: "recent",
     }),
@@ -43,6 +52,9 @@ export default async function QueuePage() {
       return (data || []) as any[];
     })(),
   ]);
+
+  // Merge per-bucket loads into a single leads list for QueueClient
+  const leads = [...partialLeads, ...submittedLeads, ...paidLeads];
 
   const bookingIdx = indexByEmail(bookings);
   const bookedEmails = new Set(
