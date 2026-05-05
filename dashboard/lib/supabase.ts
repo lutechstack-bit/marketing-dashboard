@@ -68,13 +68,32 @@ export type LeadActivityRow = {
   created_at: string;
 };
 
+/**
+ * Fetch leads + optionally enrich with payment / activity / submission joins.
+ *
+ * PERFORMANCE NOTES
+ * · Base query is a single paginated SELECT with stage/program/score filters
+ *   pushed down to SQL (so we never load 27k rows just to filter to a bucket).
+ * · Enrichment queries run in PARALLEL via Promise.all instead of nested
+ *   sequential loops. Three enrichments × 7-8 chunks = 21-24 queries → all
+ *   fired at once = ~1 round-trip instead of 21.
+ * · Each enrichment is opt-in — pages should request only what they show
+ *   on screen. /queue needs activities (last_action). /leads needs payments
+ *   + activities. /insights needs nothing → use fetchLeadsLight.
+ *
+ * Default enrichments = [] (none) for new callers. Pass enrichments to opt in.
+ */
+type EnrichmentKey = "payments" | "activities" | "submissions";
+
 export async function fetchLeads(opts: {
   programs?: string[];
   stages?: string[];
   minScore?: number;
   limit?: number;
+  enrichments?: EnrichmentKey[];
 } = {}): Promise<LeadRow[]> {
   const targetLimit = opts.limit || 500;
+  const enrichments = opts.enrichments || [];
   const leads: LeadRow[] = [];
   const PAGE = 1000;
   let offset = 0;
@@ -99,107 +118,121 @@ export async function fetchLeads(opts: {
     offset += PAGE;
   }
 
-  // Batch payment summaries + latest status + REAL submitted_at per lead
-  if (leads.length) {
-    const ids = leads.map(l => l.id);
-    const pays: any[] = [];
-    const acts: any[] = [];
-    const subs: any[] = [];
-    const CHUNK = 200;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const idChunk = ids.slice(i, i + CHUNK);
-      // payments
-      let off2 = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("payments")
-          .select("lead_id,amount_inr,paid_at,status")
-          .in("lead_id", idChunk)
-          .eq("status", "captured")
-          .range(off2, off2 + 999);
-        if (error) break;
-        pays.push(...(data || []));
-        if (!data || data.length < 1000) break;
-        off2 += 1000;
-      }
-      // activities — latest non-note per lead
-      let off3 = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("lead_activities")
-          .select("lead_id,action,rep_name,created_at")
-          .in("lead_id", idChunk)
-          .neq("action", "note")
-          .order("created_at", { ascending: false })
-          .range(off3, off3 + 999);
-        if (error) break;
-        acts.push(...(data || []));
-        if (!data || data.length < 1000) break;
-        off3 += 1000;
-      }
-      // form_submissions — earliest submitted_at per lead (REAL submission time)
-      // Bug fix: previously we used leads.first_seen which equals the Python-script
-      // bulk-insert time, making thousands of leads share the same timestamp.
-      // submitted_at comes from Tally itself — accurate per submission.
-      let off4 = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("form_submissions")
-          .select("lead_id,submitted_at")
-          .in("lead_id", idChunk)
-          .order("submitted_at", { ascending: true })
-          .range(off4, off4 + 999);
-        if (error) break;
-        subs.push(...(data || []));
-        if (!data || data.length < 1000) break;
-        off4 += 1000;
-      }
-    }
-    // Index payments
-    const byLeadPay: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
+  if (!leads.length || enrichments.length === 0) return leads;
+
+  // Run all requested enrichments in parallel. Each enrichment chunks its
+  // ID list and fires those chunks concurrently too — bounded by ~200 IDs
+  // per query (PostgREST URL length limit).
+  const ids = leads.map(l => l.id);
+  const chunks = chunkArray(ids, 200);
+
+  const tasks: Promise<void>[] = [];
+  let pays: any[] = [];
+  let acts: any[] = [];
+  let subs: any[] = [];
+
+  if (enrichments.includes("payments")) {
+    tasks.push((async () => {
+      const results = await Promise.all(
+        chunks.map(c =>
+          supabase
+            .from("payments")
+            .select("lead_id,amount_inr,paid_at,status")
+            .in("lead_id", c)
+            .eq("status", "captured")
+        )
+      );
+      pays = results.flatMap(r => r.data || []);
+    })());
+  }
+  if (enrichments.includes("activities")) {
+    tasks.push((async () => {
+      const results = await Promise.all(
+        chunks.map(c =>
+          supabase
+            .from("lead_activities")
+            .select("lead_id,action,rep_name,created_at")
+            .in("lead_id", c)
+            .neq("action", "note")
+            .order("created_at", { ascending: false })
+        )
+      );
+      acts = results.flatMap(r => r.data || []);
+    })());
+  }
+  if (enrichments.includes("submissions")) {
+    tasks.push((async () => {
+      const results = await Promise.all(
+        chunks.map(c =>
+          supabase
+            .from("form_submissions")
+            .select("lead_id,submitted_at")
+            .in("lead_id", c)
+            .order("submitted_at", { ascending: true })
+        )
+      );
+      subs = results.flatMap(r => r.data || []);
+    })());
+  }
+
+  await Promise.all(tasks);
+
+  // Index + apply
+  if (enrichments.includes("payments")) {
+    const byLead: Record<string, { count: number; last_amt?: number; last_at?: string }> = {};
     for (const p of pays) {
       const k = p.lead_id;
-      if (!byLeadPay[k]) byLeadPay[k] = { count: 0 };
-      byLeadPay[k].count++;
-      if (!byLeadPay[k].last_at || p.paid_at > byLeadPay[k].last_at!) {
-        byLeadPay[k].last_at = p.paid_at;
-        byLeadPay[k].last_amt = p.amount_inr;
-      }
-    }
-    const byLeadAct: Record<string, { action: string; rep_name: string | null; created_at: string }> = {};
-    for (const a of acts) {
-      if (!byLeadAct[a.lead_id]) {
-        byLeadAct[a.lead_id] = { action: a.action, rep_name: a.rep_name, created_at: a.created_at };
-      }
-    }
-    // Earliest submitted_at per lead (subs already sorted asc, so first wins)
-    const earliestSubByLead: Record<string, string> = {};
-    for (const s of subs) {
-      if (s.lead_id && !earliestSubByLead[s.lead_id]) {
-        earliestSubByLead[s.lead_id] = s.submitted_at;
+      if (!byLead[k]) byLead[k] = { count: 0 };
+      byLead[k].count++;
+      if (!byLead[k].last_at || p.paid_at > byLead[k].last_at!) {
+        byLead[k].last_at = p.paid_at;
+        byLead[k].last_amt = p.amount_inr;
       }
     }
     for (const l of leads) {
-      const p = byLeadPay[l.id];
+      const p = byLead[l.id];
       if (p) {
         l.captured_payment_count = p.count;
         l.last_payment_amount    = p.last_amt;
         l.last_payment_at        = p.last_at;
       }
-      const a = byLeadAct[l.id];
+    }
+  }
+  if (enrichments.includes("activities")) {
+    const byLead: Record<string, { action: string; rep_name: string | null; created_at: string }> = {};
+    for (const a of acts) {
+      if (!byLead[a.lead_id]) {
+        byLead[a.lead_id] = { action: a.action, rep_name: a.rep_name, created_at: a.created_at };
+      }
+    }
+    for (const l of leads) {
+      const a = byLead[l.id];
       if (a) {
         l.last_action       = a.action;
         l.last_contacted_by = a.rep_name;
         l.last_contacted_at = a.created_at;
       }
-      // Override first_seen with the REAL submission time when available
-      if (earliestSubByLead[l.id]) {
-        l.first_seen = earliestSubByLead[l.id];
+    }
+  }
+  if (enrichments.includes("submissions")) {
+    const earliestByLead: Record<string, string> = {};
+    for (const s of subs) {
+      if (s.lead_id && !earliestByLead[s.lead_id]) {
+        earliestByLead[s.lead_id] = s.submitted_at;
       }
+    }
+    for (const l of leads) {
+      if (earliestByLead[l.id]) l.first_seen = earliestByLead[l.id];
     }
   }
 
   return leads;
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
 /**

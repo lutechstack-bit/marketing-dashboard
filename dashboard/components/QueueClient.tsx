@@ -87,14 +87,15 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(defaultVisible());
 
-  // Auto-refresh every 30s while tab visible
+  // Auto-refresh every 90s while tab visible. (Was 30s — too aggressive at
+  // 27k+ leads since each refresh re-runs server queries.)
   useEffect(() => {
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && !document.hidden) {
         router.refresh();
         setLastRefresh(new Date());
       }
-    }, 30_000);
+    }, 90_000);
     return () => clearInterval(interval);
   }, [router]);
 

@@ -6,9 +6,11 @@ import { Flame, TrendingUp, Users } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPage() {
+  // Only enrich what /leads actually displays: payment count + last_action.
+  // form_submissions enrichment was wasteful here — leads.first_seen is fine.
   const [stats, leads] = await Promise.all([
     fetchLeadStats(),
-    fetchLeads({ limit: 2000 }),
+    fetchLeads({ limit: 2000, enrichments: ["payments", "activities"] }),
   ]);
 
   return (

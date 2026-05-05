@@ -12,9 +12,15 @@ export const maxDuration = 60;
 export default async function QueuePage() {
   const currentRep = await getCurrentRep();
 
-  // Parallel fetch — lightweight queries
+  // Parallel fetch — only actionable stages + only the activities enrichment
+  // (queue uses last_action for the status dropdown; payments/submissions
+  // aren't shown on this list view, so we skip them).
   const [leads, bookings, earningsRes] = await Promise.all([
-    fetchLeads({ limit: 1500 }),
+    fetchLeads({
+      limit: 1500,
+      stages: ["form_partial", "form_submitted", "app_fee_paid", "accepted"],
+      enrichments: ["activities"],
+    }),
     fetchBookingsCached(45).catch(() => []),
     // For sales reps, only their earnings; admins/founders see everyone's
     (async () => {
