@@ -11,8 +11,8 @@ type Product = { code: string; name: string; long_name: string; family: string }
 
 const ROLE_BADGE: Record<Rep["role"], string> = {
   sales: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200",
-  founder: "bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200",
-  admin: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+  founder: "bg-forge-yellow-pale text-forge-orange-deep ring-1 ring-forge-yellow-soft",
+  admin: "bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow",
 };
 
 export default function TeamClient({ reps, assignments, products, currentRepId }: { reps: Rep[]; assignments: Assignment[]; products: Product[]; currentRepId: string }) {
@@ -61,13 +61,13 @@ export default function TeamClient({ reps, assignments, products, currentRepId }
     <div>
       <div className="flex items-end justify-between gap-3 flex-wrap mb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-fg-text inline-flex items-center gap-2">
-            <Users className="w-7 h-7 text-indigo-600" />
-            Team
+          <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black inline-flex items-center gap-3">
+            <Users className="w-8 h-8 text-forge-orange-deep not-italic" />
+            <span><span className="brand-underline">Team</span></span>
           </h1>
-          <p className="text-sm text-fg-muted mt-1">{reps.length} {reps.length === 1 ? "person" : "people"} — manage roles, assignments, password links</p>
+          <p className="text-sm text-fg-muted mt-2">{reps.length} {reps.length === 1 ? "person" : "people"} — manage roles, assignments, password links</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700">
+        <button onClick={() => setShowAdd(true)} className="btn-forge">
           <UserPlus className="w-4 h-4" />Invite new user
         </button>
       </div>
@@ -92,9 +92,9 @@ export default function TeamClient({ reps, assignments, products, currentRepId }
               const a = assignmentsByRep[r.id] || [];
               return (
                 <tr key={r.id} className={`border-b border-fg-border/70 row-hover ${!r.active ? "opacity-60" : ""}`}>
-                  <td className="py-3 pl-4 pr-2 font-semibold text-fg-text">
+                  <td className="py-3 pl-4 pr-2 font-semibold text-forge-black">
                     {r.full_name || <span className="italic text-fg-subtle">unnamed</span>}
-                    {r.id === currentRepId && <span className="ml-2 text-[10px] text-amber-700 font-bold">YOU</span>}
+                    {r.id === currentRepId && <span className="ml-2 text-[10px] font-bold text-forge-orange-deep px-1.5 py-0.5 bg-forge-yellow-soft rounded">YOU</span>}
                   </td>
                   <td className="py-3 px-2 text-fg-muted">{r.email}</td>
                   <td className="py-3 px-2">
@@ -102,10 +102,10 @@ export default function TeamClient({ reps, assignments, products, currentRepId }
                   </td>
                   <td className="py-3 px-2 max-w-[280px]">
                     {a.length > 0 ? (
-                      <div className="text-xs text-fg-text/85 leading-tight space-x-2">
+                      <div className="text-xs text-forge-black/85 leading-tight space-x-2">
                         {a.map(x => (
                           <span key={x.id} className="inline-block whitespace-nowrap">
-                            {x.product_code}{x.edition_label ? `·${x.edition_label}` : ""} <span className="text-emerald-700 font-semibold">{inr(x.incentive_inr)}</span>
+                            {x.product_code}{x.edition_label ? `·${x.edition_label}` : ""} <span className="text-forge-orange-deep font-semibold">{inr(x.incentive_inr)}</span>
                           </span>
                         ))}
                       </div>
@@ -122,7 +122,7 @@ export default function TeamClient({ reps, assignments, products, currentRepId }
                         onClick={() => getPasswordLink(r)}
                         disabled={busy === r.id}
                         title="Generate set-password link"
-                        className="p-1.5 rounded text-fg-muted hover:text-amber-700 hover:bg-amber-50"
+                        className="p-1.5 rounded text-fg-muted hover:text-forge-orange-deep hover:bg-forge-yellow-pale"
                       >
                         {busy === r.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <KeyRound className="w-4 h-4"/>}
                       </button>
@@ -204,7 +204,7 @@ function AddUserForm({ products, onClose, onCreated }: { products: Product[]; on
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
       <form onSubmit={submit} className="surface-card max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-fg-text inline-flex items-center gap-2"><UserPlus className="w-5 h-5 text-indigo-600" />Invite new user</h2>
+          <h2 className="font-display text-2xl font-extrabold italic text-forge-black inline-flex items-center gap-2"><UserPlus className="w-5 h-5 text-forge-orange-deep not-italic" />Invite new user</h2>
           <button type="button" onClick={onClose} className="text-fg-muted hover:text-fg-text"><X className="w-5 h-5" /></button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
@@ -230,7 +230,7 @@ function AddUserForm({ products, onClose, onCreated }: { products: Product[]; on
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs uppercase tracking-wider text-fg-muted font-semibold">Program assignments + incentives</div>
-              <button type="button" onClick={addAssignment} className="text-xs text-indigo-700 hover:text-indigo-800 inline-flex items-center gap-1"><Plus className="w-3 h-3" />Add</button>
+              <button type="button" onClick={addAssignment} className="text-xs text-forge-orange-deep hover:text-forge-orange inline-flex items-center gap-1 font-semibold"><Plus className="w-3 h-3" />Add</button>
             </div>
             <div className="space-y-2">
               {assignments.length === 0 && <div className="text-xs text-fg-subtle italic">No programs assigned yet — add at least one if this rep should earn incentives.</div>}
@@ -254,7 +254,7 @@ function AddUserForm({ products, onClose, onCreated }: { products: Product[]; on
 
         <div className="flex justify-end gap-2 mt-5">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-md border border-fg-border text-fg-muted hover:bg-fg-surface">Cancel</button>
-          <button type="submit" disabled={submitting} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button type="submit" disabled={submitting} className="btn-forge disabled:opacity-50">
             {submitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <UserPlus className="w-4 h-4"/>}
             Send invite
           </button>
@@ -270,15 +270,15 @@ function LinkModal({ title, link, onClose }: { title: string; link: string; onCl
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
       <div className="surface-card max-w-2xl w-full p-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-fg-text inline-flex items-center gap-2"><KeyRound className="w-5 h-5 text-amber-600" />Set-password link</h2>
+          <h2 className="font-display text-2xl font-extrabold italic text-forge-black inline-flex items-center gap-2"><KeyRound className="w-5 h-5 text-forge-orange-deep not-italic" />Set-password link</h2>
           <button onClick={onClose} className="text-fg-muted hover:text-fg-text"><X className="w-5 h-5" /></button>
         </div>
-        <p className="text-sm text-fg-muted mb-3">Send this link to <span className="font-semibold text-fg-text">{title}</span>. They click it, set a new password, and they're in.</p>
-        <div className="bg-fg-surface border border-fg-border rounded-md p-3 text-xs break-all font-mono text-fg-text">{link}</div>
+        <p className="text-sm text-fg-muted mb-3">Send this link to <span className="font-semibold text-forge-black">{title}</span>. They click it, set a new password, and they&apos;re in.</p>
+        <div className="bg-forge-cream border border-forge-yellow-soft rounded-md p-3 text-xs break-all font-mono text-forge-black">{link}</div>
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={() => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md bg-fg-text text-white hover:bg-slate-700"
+            className="btn-forge"
           >
             {copied ? <Check className="w-4 h-4"/> : <Copy className="w-4 h-4"/>}
             {copied ? "Copied" : "Copy link"}

@@ -15,10 +15,10 @@ import { useEffect } from "react";
 import StatusDropdown from "./StatusDropdown";
 
 const STAGE_LABEL: Record<string, { label: string; cls: string }> = {
-  form_partial:   { label: "Form partial",   cls: "bg-slate-100 text-slate-700 ring-1 ring-slate-200" },
+  form_partial:   { label: "Form partial",   cls: "bg-forge-cream text-forge-black/70 ring-1 ring-fg-border" },
   form_submitted: { label: "Form submitted", cls: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200" },
-  app_fee_paid:   { label: "App fee paid",   cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
-  accepted:       { label: "App fee paid · need interview booking", cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-200" },
+  app_fee_paid:   { label: "App fee paid",   cls: "bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow" },
+  accepted:       { label: "App fee paid · need interview booking", cls: "bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow" },
   confirmed:      { label: "Confirmed",      cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" },
   balance_paid:   { label: "Paid in full",   cls: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" },
   lost:           { label: "Lost",           cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" },
@@ -139,7 +139,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 mb-1.5 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight text-fg-text truncate">
+              <h1 className="font-display text-3xl font-extrabold italic text-forge-black tracking-tight truncate">
                 {lead.name || <span className="italic text-fg-subtle">No name</span>}
               </h1>
               <span className={`text-xs font-semibold px-2.5 py-1 rounded ${stage.cls}`}>{stage.label}</span>
@@ -154,19 +154,19 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
             </div>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 text-sm">
               {lead.phone && (
-                <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 text-fg-text hover:text-emerald-700">
+                <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 text-forge-black hover:text-forge-orange-deep">
                   <Phone className="w-4 h-4" />+{lead.phone}
                 </a>
               )}
               {lead.email && (
-                <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 text-fg-text hover:text-cyan-700 truncate max-w-xs">
+                <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 text-forge-black hover:text-forge-orange-deep truncate max-w-xs">
                   <Mail className="w-4 h-4" />{lead.email}
                 </a>
               )}
             </div>
           </div>
-          <div className="flex flex-col items-center justify-center shrink-0 px-5 py-3 rounded-xl bg-fg-surface border border-fg-border min-w-[120px]">
-            <div className="text-[11px] uppercase tracking-wider text-fg-muted">MQL Score</div>
+          <div className="flex flex-col items-center justify-center shrink-0 px-5 py-3 rounded-xl bg-forge-yellow-pale border border-forge-yellow-soft min-w-[120px]">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-semibold">MQL Score</div>
             <ScoreBig score={lead.score} />
             <div className="text-[10px] text-fg-subtle mt-0.5">out of 100</div>
           </div>
@@ -195,58 +195,59 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
       </div>
 
       {/* AI BRIEF (deferred load — page renders fast, brief loads after) */}
-      <div className="surface-card p-5 bg-gradient-to-br from-indigo-50/40 via-white to-cyan-50/30 border-l-4 border-l-indigo-500">
-        <div className="flex items-center gap-2 mb-3 text-fg-text">
-          <Sparkles className="w-4 h-4 text-indigo-600" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider">AI brief</h2>
-          {aiLoading && <span className="text-[10px] text-fg-subtle ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />Generating…</span>}
+      <div className="surface-card p-5 bg-forge-radial border-l-4 border-l-forge-yellow relative overflow-hidden">
+        <div className="absolute inset-0 bg-forge-stripes opacity-[0.04] pointer-events-none" />
+        <div className="flex items-center gap-2 mb-3 text-forge-black relative">
+          <Sparkles className="w-4 h-4 text-forge-orange-deep" />
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em]">AI brief</h2>
+          {aiLoading && <span className="text-[10px] text-fg-subtle ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-forge-orange animate-pulse" />Generating…</span>}
         </div>
         {aiLoading ? (
-          <div className="space-y-2 animate-pulse">
-            <div className="h-4 bg-indigo-100/60 rounded w-3/4"></div>
-            <div className="h-4 bg-indigo-100/60 rounded w-1/2"></div>
-            <div className="h-4 bg-cyan-100/60 rounded w-2/3 mt-3"></div>
+          <div className="space-y-2 animate-pulse relative">
+            <div className="h-4 bg-forge-yellow-soft rounded w-3/4"></div>
+            <div className="h-4 bg-forge-yellow-soft rounded w-1/2"></div>
+            <div className="h-4 bg-forge-yellow-pale rounded w-2/3 mt-3"></div>
           </div>
         ) : aiBrief ? (
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 relative">
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-indigo-700 font-semibold mb-0.5">Why call NOW</div>
-              <p className="text-base text-fg-text leading-relaxed">{aiBrief.why_now}</p>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-forge-orange-deep font-semibold mb-0.5">Why call NOW</div>
+              <p className="text-base text-forge-black leading-relaxed">{aiBrief.why_now}</p>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-cyan-700 font-semibold mb-0.5">Best opener</div>
-              <p className="text-base text-fg-text leading-relaxed italic">&ldquo;{aiBrief.best_opener}&rdquo;</p>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-forge-orange-deep font-semibold mb-0.5">Best opener</div>
+              <p className="font-display text-base text-forge-black leading-relaxed italic">&ldquo;{aiBrief.best_opener}&rdquo;</p>
             </div>
             {aiBrief.flag && (
-              <div className="mt-2 px-3 py-2 rounded bg-amber-50 ring-1 ring-amber-200 text-sm text-amber-900">
+              <div className="mt-2 px-3 py-2 rounded bg-forge-yellow-soft ring-1 ring-forge-yellow text-sm text-forge-orange-deep">
                 ⚑ {aiBrief.flag}
               </div>
             )}
           </div>
         ) : (
-          <p className="text-sm text-fg-muted italic">No AI brief available — lead has no form responses to analyze yet.</p>
+          <p className="text-sm text-fg-muted italic relative">No AI brief available — lead has no form responses to analyze yet.</p>
         )}
       </div>
 
       {/* RULE-BASED REASONING + TALKING POINTS (always visible, complements AI brief) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="surface-card p-5">
-          <div className="flex items-center gap-2 mb-3 text-fg-text">
-            <Flame className="w-4 h-4 text-amber-600" />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">Why this lead matters</h2>
+          <div className="flex items-center gap-2 mb-3 text-forge-black">
+            <Flame className="w-4 h-4 text-forge-orange-deep" />
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em]">Why this lead matters</h2>
           </div>
-          <p className="text-base text-fg-text leading-relaxed">{why}</p>
+          <p className="text-base text-forge-black leading-relaxed">{why}</p>
           <ScoreBreakdown breakdown={lead.score_breakdown || {}} />
         </div>
         <div className="surface-card p-5">
-          <div className="flex items-center gap-2 mb-3 text-fg-text">
-            <Sparkles className="w-4 h-4 text-cyan-600" />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">Talking points</h2>
+          <div className="flex items-center gap-2 mb-3 text-forge-black">
+            <Sparkles className="w-4 h-4 text-forge-orange-deep" />
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em]">Talking points</h2>
           </div>
           <ul className="space-y-2">
             {talking.map((t, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-fg-text">
-                <span className="text-amber-500 mt-1">•</span>
+              <li key={i} className="flex items-start gap-2 text-sm text-forge-black">
+                <span className="text-forge-orange mt-1">•</span>
                 <span>{t}</span>
               </li>
             ))}
@@ -296,7 +297,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [] }: Prop
           </div>
           <div className="space-y-2">
             {activities.filter(a => a.action === "note" && a.notes).slice(0, 5).map(n => (
-              <div key={n.id} className="text-sm text-fg-text bg-amber-50/60 border border-amber-100 rounded-md p-3">
+              <div key={n.id} className="text-sm text-forge-black bg-forge-yellow-pale border border-forge-yellow-soft rounded-md p-3">
                 <div className="text-[11px] text-fg-muted mb-1">
                   {n.rep_name || "—"} · {fmtDate(n.created_at)}
                 </div>
@@ -410,11 +411,11 @@ function PaymentsCard({ payments }: { payments: PaymentRow[] }) {
 }
 
 function ScoreBig({ score }: { score: number }) {
-  let color = "text-slate-500";
-  if (score >= 75) color = "text-amber-600";
-  else if (score >= 50) color = "text-emerald-600";
-  else if (score >= 25) color = "text-cyan-600";
-  return <div className={`text-4xl font-bold tabular-nums ${color}`}>{score}</div>;
+  let color = "text-fg-muted";
+  if (score >= 75) color = "text-forge-orange-deep";
+  else if (score >= 50) color = "text-forge-orange";
+  else if (score >= 25) color = "text-forge-yellow";
+  return <div className={`font-display text-4xl font-extrabold italic tabular-nums ${color}`}>{score}</div>;
 }
 
 function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number> }) {
@@ -436,9 +437,9 @@ function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number> }) {
 }
 
 function ActionLink({ href, icon, label, tone, external }: { href: string; icon: React.ReactNode; label: string; tone: "emerald" | "green" | "cyan"; external?: boolean }) {
-  const cls = tone === "emerald" ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-            : tone === "green"   ? "border-green-300 text-green-700 bg-green-50 hover:bg-green-100"
-            :                       "border-cyan-300 text-cyan-700 bg-cyan-50 hover:bg-cyan-100";
+  const cls = tone === "emerald" ? "border-forge-orange-deep text-forge-black bg-forge-yellow hover:bg-forge-orange shadow-soft"
+            : tone === "green"   ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+            :                       "border-forge-yellow-soft text-forge-orange-deep bg-forge-yellow-pale hover:bg-forge-yellow-soft";
   return (
     <a
       href={href}
@@ -453,10 +454,10 @@ function ActionLink({ href, icon, label, tone, external }: { href: string; icon:
 
 function OutcomeBtn({ icon, label, tone, onClick }: { icon: React.ReactNode; label: string; tone: "slate" | "emerald" | "rose" | "cyan" | "emeraldFilled"; onClick: () => void }) {
   const cls = tone === "emerald"        ? "border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50"
-            : tone === "emeraldFilled"  ? "border-emerald-600 text-white bg-emerald-600 hover:bg-emerald-700"
+            : tone === "emeraldFilled"  ? "border-forge-orange-deep text-forge-black bg-forge-yellow hover:bg-forge-orange shadow-soft"
             : tone === "rose"           ? "border-rose-200 text-rose-700 bg-white hover:bg-rose-50"
-            : tone === "cyan"           ? "border-cyan-200 text-cyan-700 bg-white hover:bg-cyan-50"
-            :                              "border-fg-border text-fg-text bg-white hover:bg-fg-surface";
+            : tone === "cyan"           ? "border-forge-yellow-soft text-forge-orange-deep bg-white hover:bg-forge-yellow-pale"
+            :                              "border-fg-border text-forge-black bg-white hover:bg-fg-surface";
   return (
     <button onClick={onClick} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${cls}`}>
       {icon}{label}

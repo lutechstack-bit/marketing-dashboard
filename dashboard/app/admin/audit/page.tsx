@@ -9,10 +9,10 @@ import { inr, fmtDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 const STATUS_COLOR: Record<string, string> = {
-  locked:    "text-amber-700",
+  locked:    "text-forge-orange-deep",
   unlocked:  "text-emerald-700",
   approved:  "text-cyan-700",
-  paid_out:  "text-slate-700",
+  paid_out:  "text-forge-black/70",
   reverted:  "text-rose-700",
 };
 
@@ -38,11 +38,11 @@ export default async function AuditPage() {
       <Header />
       <main className="max-w-[1400px] mx-auto px-6 py-6">
         <div className="mb-5">
-          <h1 className="text-3xl font-bold tracking-tight text-fg-text inline-flex items-center gap-2">
-            <Activity className="w-7 h-7 text-cyan-600" />
-            Earnings Audit Log
+          <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black inline-flex items-center gap-3">
+            <Activity className="w-8 h-8 text-forge-orange-deep not-italic" />
+            <span>Earnings <span className="brand-underline">audit log</span></span>
           </h1>
-          <p className="text-sm text-fg-muted mt-1">Every state transition for every earning. Full traceability for refund disputes or rep questions.</p>
+          <p className="text-sm text-fg-muted mt-2">Every state transition for every earning. Full traceability for refund disputes or rep questions.</p>
         </div>
 
         <div className="surface-card overflow-hidden">
@@ -78,15 +78,15 @@ export default async function AuditPage() {
                       <span className={`font-semibold ${STATUS_COLOR[a.to_status] || "text-fg-text"}`}>{a.to_status}</span>
                     </td>
                     <td className="py-3 px-2 max-w-[200px]">
-                      <div className="font-medium text-fg-text truncate">{r?.full_name || r?.email || "—"}</div>
+                      <div className="font-medium text-forge-black truncate">{r?.full_name || r?.email || "—"}</div>
                       {lead && (
-                        <Link href={`/leads/${lead.id}`} className="text-[11px] text-fg-muted hover:text-amber-700 hover:underline truncate block">
+                        <Link href={`/leads/${lead.id}`} className="text-[11px] text-fg-muted hover:text-forge-orange-deep hover:underline truncate block">
                           {lead.name || lead.email || "—"}
                         </Link>
                       )}
                     </td>
-                    <td className="py-3 px-2 text-fg-text/85">{e?.product_code || "—"}</td>
-                    <td className="py-3 px-2 text-right tabular-nums font-semibold text-emerald-700">{e ? inr(e.amount_inr) : "—"}</td>
+                    <td className="py-3 px-2 text-forge-black/85">{e?.product_code || "—"}</td>
+                    <td className="py-3 px-2 text-right tabular-nums font-semibold text-forge-orange-deep">{e ? inr(e.amount_inr) : "—"}</td>
                     <td className="py-3 px-2 text-xs text-fg-muted">
                       {changedBy ? (changedBy.full_name || changedBy.email) : <span className="italic">system</span>}
                     </td>

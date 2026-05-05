@@ -26,11 +26,11 @@ type Lead = { id: string; name: string | null; email: string | null; phone: stri
 type Rep = { id: string; full_name: string | null; email: string; role: string };
 
 const STATUS_META: Record<Earning["status"], { label: string; cls: string; icon: React.ReactNode }> = {
-  locked:    { label: "🔒 Locked",      cls: "bg-amber-50 text-amber-800 ring-amber-200",        icon: <Lock className="w-3.5 h-3.5" /> },
-  unlocked:  { label: "✅ Unlocked",    cls: "bg-emerald-50 text-emerald-800 ring-emerald-200",  icon: <Unlock className="w-3.5 h-3.5" /> },
-  approved:  { label: "✓ Approved",     cls: "bg-cyan-50 text-cyan-800 ring-cyan-200",            icon: <ShieldCheck className="w-3.5 h-3.5" /> },
-  paid_out:  { label: "💵 Paid out",    cls: "bg-slate-100 text-slate-700 ring-slate-200",         icon: <CheckCheck className="w-3.5 h-3.5" /> },
-  reverted:  { label: "❌ Reverted",    cls: "bg-rose-50 text-rose-700 ring-rose-200",            icon: <RotateCcw className="w-3.5 h-3.5" /> },
+  locked:    { label: "🔒 Locked",      cls: "bg-forge-yellow-soft text-forge-orange-deep ring-forge-yellow",  icon: <Lock className="w-3.5 h-3.5" /> },
+  unlocked:  { label: "✅ Unlocked",    cls: "bg-emerald-50 text-emerald-800 ring-emerald-200",                icon: <Unlock className="w-3.5 h-3.5" /> },
+  approved:  { label: "✓ Approved",     cls: "bg-cyan-50 text-cyan-800 ring-cyan-200",                          icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+  paid_out:  { label: "💵 Paid out",    cls: "bg-forge-cream text-forge-black/70 ring-fg-border",               icon: <CheckCheck className="w-3.5 h-3.5" /> },
+  reverted:  { label: "❌ Reverted",    cls: "bg-rose-50 text-rose-700 ring-rose-200",                          icon: <RotateCcw className="w-3.5 h-3.5" /> },
 };
 
 export default function PayoutsClient({ earnings, repsById, leadsById }: {
@@ -107,11 +107,11 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
     <div>
       <div className="flex items-end justify-between gap-3 flex-wrap mb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-fg-text inline-flex items-center gap-2">
-            <ShieldCheck className="w-7 h-7 text-cyan-600" />
-            Payout Approvals
+          <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black inline-flex items-center gap-3">
+            <ShieldCheck className="w-8 h-8 text-forge-orange-deep not-italic" />
+            <span>Payout <span className="brand-underline">approvals</span></span>
           </h1>
-          <p className="text-sm text-fg-muted mt-1">Per-lead approval. Batch buttons enabled when rows are selected.</p>
+          <p className="text-sm text-fg-muted mt-2">Per-lead approval. Batch buttons enabled when rows are selected.</p>
         </div>
       </div>
 
@@ -127,12 +127,12 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
 
       {/* Batch toolbar — appears when rows selected */}
       {selected.size > 0 && (
-        <div className="surface-card p-3 mb-3 bg-amber-50/30 border-l-4 border-l-amber-500 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm text-fg-text">
-            <span className="font-semibold">{selected.size}</span> selected · <span className="font-semibold tabular-nums">{inr(selectedAmount, { compact: true })}</span> across {selectedReps.size} {selectedReps.size === 1 ? "rep" : "reps"}
+        <div className="surface-card p-3 mb-3 bg-forge-radial border-l-4 border-l-forge-yellow flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-sm text-forge-black">
+            <span className="font-semibold">{selected.size}</span> selected · <span className="font-display italic font-bold tabular-nums text-forge-orange-deep">{inr(selectedAmount, { compact: true })}</span> across {selectedReps.size} {selectedReps.size === 1 ? "rep" : "reps"}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={clearSelection} className="text-xs text-fg-muted hover:text-fg-text px-2 py-1">Clear</button>
+            <button onClick={clearSelection} className="text-xs text-fg-muted hover:text-forge-black px-2 py-1">Clear</button>
             <button
               onClick={() => actBatch("approve_batch")}
               disabled={busy === "batch"}
@@ -144,7 +144,7 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
             <button
               onClick={() => actBatch("mark_paid_out_batch")}
               disabled={busy === "batch"}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-forge-yellow text-forge-black hover:bg-forge-orange shadow-soft disabled:opacity-50"
             >
               {busy === "batch" ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <CheckCheck className="w-3.5 h-3.5"/>}
               Mark all paid out
@@ -193,7 +193,7 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
                   </td>
                   <td className="py-3 px-2 max-w-[200px]">
                     {lead ? (
-                      <Link href={`/leads/${lead.id}`} className="text-fg-text hover:text-amber-700 hover:underline truncate block font-medium">{lead.name || lead.email || "—"}</Link>
+                      <Link href={`/leads/${lead.id}`} className="text-forge-black hover:text-forge-orange-deep hover:underline truncate block font-medium">{lead.name || lead.email || "—"}</Link>
                     ) : <span className="text-fg-subtle italic">lead not found</span>}
                   </td>
                   <td className="py-3 px-2 text-fg-text/85">{rep?.full_name || rep?.email || <span className="text-fg-subtle italic">unknown rep</span>}</td>
@@ -201,7 +201,7 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
                     <span className="text-xs font-semibold">{e.product_code}</span>
                     {e.edition_label && <span className="text-[10px] text-fg-muted ml-1">· {e.edition_label}</span>}
                   </td>
-                  <td className="py-3 px-2 text-right font-bold tabular-nums text-emerald-700">{inr(e.amount_inr)}</td>
+                  <td className="py-3 px-2 text-right font-bold tabular-nums text-forge-orange-deep">{inr(e.amount_inr)}</td>
                   <td className="py-3 px-2 text-xs text-fg-muted whitespace-nowrap">{e.locked_at ? fmtDate(e.locked_at) : "—"}</td>
                   <td className="py-3 px-2 text-xs text-fg-muted whitespace-nowrap">{e.unlocked_at ? fmtDate(e.unlocked_at) : "—"}</td>
                   <td className="py-3 pr-4 pl-2">

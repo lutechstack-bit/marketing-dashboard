@@ -46,8 +46,10 @@ export default async function HomePage() {
       <main className="max-w-[1500px] mx-auto px-6 py-8">
         {/* Page title */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight text-fg-text">Founders Overview</h1>
-          <p className="text-sm text-fg-muted mt-1">{latestLabel ? `Showing ${latestLabel}` : "All-time view"} · click a tab below to drill into a program family</p>
+          <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black">
+            Founders <span className="brand-underline">overview</span>
+          </h1>
+          <p className="text-sm text-fg-muted mt-2">{latestLabel ? `Showing ${latestLabel}` : "All-time view"} · click a tab below to drill into a program family</p>
         </div>
 
         {/* Family tabs */}

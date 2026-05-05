@@ -69,15 +69,15 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
       <main className="max-w-[1400px] mx-auto px-6 py-6">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-5">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-fg-text inline-flex items-center gap-2">
-              <Trophy className="w-7 h-7 text-amber-500" />
-              Leaderboard
+            <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black inline-flex items-center gap-3">
+              <Trophy className="w-8 h-8 text-forge-orange-deep not-italic" />
+              <span>Leader<span className="brand-underline">board</span></span>
             </h1>
-            <p className="text-sm text-fg-muted mt-1">{label} · all incentive earnings (locked + unlocked + paid out)</p>
+            <p className="text-sm text-fg-muted mt-2">{label} · all incentive earnings (locked + unlocked + paid out)</p>
           </div>
-          <div className="inline-flex bg-fg-surface border border-fg-border rounded-lg p-0.5 text-xs">
+          <div className="inline-flex bg-forge-cream border border-forge-yellow-soft rounded-lg p-0.5 text-xs">
             {["month", "quarter", "all"].map(p => (
-              <a key={p} href={`?period=${p}`} className={`px-3 py-1.5 rounded-md font-medium ${period === p ? "bg-white text-fg-text shadow-sm" : "text-fg-muted hover:text-fg-text"}`}>
+              <a key={p} href={`?period=${p}`} className={`px-3 py-1.5 rounded-md font-medium ${period === p ? "bg-forge-yellow text-forge-black shadow-soft" : "text-fg-muted hover:text-forge-black"}`}>
                 {p === "month" ? "This month" : p === "quarter" ? "This quarter" : "All time"}
               </a>
             ))}
@@ -111,20 +111,23 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
                 const isMe = currentRep?.id === r.rep_id;
                 const totalConv = r.locked_count + r.unlocked_count + r.approved_count + r.paid_out_count;
                 return (
-                  <tr key={r.rep_id} className={`border-b border-fg-border/70 row-hover ${isMe ? "bg-amber-50/40" : ""}`}>
+                  <tr key={r.rep_id} className={`border-b border-fg-border/70 row-hover ${isMe ? "bg-forge-yellow-pale" : ""}`}>
                     <td className="py-3 pl-4 pr-2">
-                      <div className={`inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold ${
-                        i === 0 ? "bg-amber-500 text-white" : i === 1 ? "bg-slate-300 text-slate-800" : i === 2 ? "bg-orange-300 text-orange-900" : "bg-fg-surface text-fg-muted"
+                      <div className={`inline-flex w-8 h-8 rounded-full items-center justify-center text-xs font-bold ${
+                        i === 0 ? "bg-forge-gradient text-forge-black shadow-soft ring-1 ring-forge-orange-deep" :
+                        i === 1 ? "bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow" :
+                        i === 2 ? "bg-forge-cream text-forge-orange-deep ring-1 ring-forge-yellow-soft" :
+                        "bg-fg-surface text-fg-muted"
                       }`}>
                         {i + 1}
                       </div>
                     </td>
                     <td className="py-3 px-2">
-                      <div className="font-semibold text-fg-text">{r.name}{isMe && <span className="ml-2 text-[10px] font-bold text-amber-700">YOU</span>}</div>
+                      <div className="font-semibold text-forge-black">{r.name}{isMe && <span className="ml-2 text-[10px] font-bold text-forge-orange-deep px-1.5 py-0.5 bg-forge-yellow-soft rounded">YOU</span>}</div>
                       <div className="text-xs text-fg-muted">{r.role}</div>
                     </td>
                     <td className="py-3 px-2 text-right tabular-nums">
-                      <div className="font-semibold text-amber-700">{inr(r.locked_amount, { compact: true })}</div>
+                      <div className="font-semibold text-forge-orange-deep">{inr(r.locked_amount, { compact: true })}</div>
                       <div className="text-[10px] text-fg-subtle">{r.locked_count} pending balance</div>
                     </td>
                     <td className="py-3 px-2 text-right tabular-nums">
@@ -132,12 +135,12 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
                       <div className="text-[10px] text-fg-subtle">{r.unlocked_count} ready</div>
                     </td>
                     <td className="py-3 px-2 text-right tabular-nums">
-                      <div className="font-semibold text-fg-text">{inr(r.paid_out_amount, { compact: true })}</div>
+                      <div className="font-semibold text-forge-black/80">{inr(r.paid_out_amount, { compact: true })}</div>
                       <div className="text-[10px] text-fg-subtle">{r.paid_out_count} cleared</div>
                     </td>
-                    <td className="py-3 px-2 text-right tabular-nums text-fg-text/85">{fmtInt(totalConv)}</td>
+                    <td className="py-3 px-2 text-right tabular-nums text-forge-black/80">{fmtInt(totalConv)}</td>
                     <td className="py-3 pr-4 pl-2 text-right">
-                      <div className="font-bold text-base text-fg-text tabular-nums">{inr(r.total, { compact: true })}</div>
+                      <div className="font-display font-bold italic text-lg text-forge-black tabular-nums">{inr(r.total, { compact: true })}</div>
                       <ProgressBar value={r.total} max={Math.max(...rows.map(x => x.total), 1)} />
                     </td>
                   </tr>
@@ -147,7 +150,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
           </table>
           {rows.length === 0 && (
             <div className="p-12 text-center text-sm text-fg-muted">
-              No active reps yet. Add one in <a href="/admin/team" className="text-amber-700 underline">Admin → Team</a>.
+              No active reps yet. Add one in <a href="/admin/team" className="text-forge-orange-deep hover:text-forge-orange underline">Admin → Team</a>.
             </div>
           )}
         </div>
@@ -162,21 +165,22 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
 
 function SummaryTile({ icon, label, amount, accent, big }: { icon: React.ReactNode; label: string; amount: number; accent: "amber" | "emerald" | "cyan" | "indigo"; big?: boolean }) {
   const accentMap: Record<string, string> = {
-    amber: "from-amber-50 to-white border-amber-200",
-    emerald: "from-emerald-50 to-white border-emerald-200",
-    cyan: "from-cyan-50 to-white border-cyan-200",
-    indigo: "from-indigo-50 to-white border-indigo-200",
+    amber: "bg-forge-yellow-pale border-forge-yellow-soft",
+    emerald: "bg-emerald-50 border-emerald-200",
+    cyan: "bg-forge-cream border-fg-border",
+    indigo: "bg-forge-radial border-l-4 border-l-forge-yellow border-forge-yellow-soft",
   };
   const iconColor: Record<string, string> = {
-    amber: "text-amber-600", emerald: "text-emerald-600", cyan: "text-cyan-600", indigo: "text-indigo-600",
+    amber: "text-forge-orange-deep", emerald: "text-emerald-700", cyan: "text-forge-orange-deep", indigo: "text-forge-orange-deep",
   };
   return (
-    <div className={`relative rounded-xl border bg-gradient-to-br ${accentMap[accent]} p-4`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-semibold text-fg-muted uppercase tracking-wider">{label}</span>
+    <div className={`relative rounded-xl border ${accentMap[accent]} p-4 overflow-hidden`}>
+      {big && <div className="absolute inset-0 bg-forge-stripes opacity-[0.04] pointer-events-none" />}
+      <div className="flex items-center justify-between mb-2 relative">
+        <span className="text-[10px] font-semibold text-fg-muted uppercase tracking-[0.12em]">{label}</span>
         <span className={iconColor[accent]}>{icon}</span>
       </div>
-      <div className={`${big ? "text-3xl" : "text-2xl"} font-bold tabular-nums text-fg-text`}>{inr(amount, { compact: true })}</div>
+      <div className={`${big ? "font-display text-3xl font-extrabold italic" : "text-2xl font-bold"} tabular-nums text-forge-black relative`}>{inr(amount, { compact: true })}</div>
     </div>
   );
 }
@@ -184,8 +188,8 @@ function SummaryTile({ icon, label, amount, accent, big }: { icon: React.ReactNo
 function ProgressBar({ value, max }: { value: number; max: number }) {
   const pct = max > 0 ? Math.min(100, Math.round(100 * value / max)) : 0;
   return (
-    <div className="h-1 w-full bg-fg-surface rounded-full mt-1.5 overflow-hidden">
-      <div style={{ width: `${pct}%` }} className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full" />
+    <div className="h-1 w-full bg-forge-cream rounded-full mt-1.5 overflow-hidden">
+      <div style={{ width: `${pct}%` }} className="h-full bg-forge-gradient rounded-full" />
     </div>
   );
 }
