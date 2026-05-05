@@ -63,13 +63,22 @@ function incentiveFor(lead: LeadRow): { amount: number; label: string; rep: stri
 // ----------------------------------------------------------------
 // Component
 // ----------------------------------------------------------------
+type EarningSummary = {
+  id: string;
+  lead_id: string | null;
+  rep_id: string | null;
+  amount_inr: number;
+  status: "locked" | "unlocked" | "approved" | "paid_out" | "reverted";
+};
+
 type QueueClientProps = {
   initialLeads: LeadRow[];
   bookedEmails: string[];
   calendlyConnected: boolean;
+  earningsByLead?: Record<string, EarningSummary>;
 };
 
-export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected }: QueueClientProps) {
+export default function QueueClient({ initialLeads, bookedEmails, calendlyConnected, earningsByLead = {} }: QueueClientProps) {
   const router = useRouter();
   const [family, setFamily] = useState<Family>("forge");
   const [product, setProduct] = useState<string>("FFM");
@@ -179,11 +188,13 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       {/* Page header */}
       <div className="flex items-end justify-between gap-4 flex-wrap mb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-fg-text">Today&apos;s Call Queue</h1>
-          <p className="text-sm text-fg-muted mt-1">
-            {today} · viewing <span className="font-semibold text-fg-text">{productMeta?.longName || product}</span>
+          <h1 className="font-display text-4xl font-extrabold italic text-forge-black tracking-tight">
+            Today&apos;s <span className="brand-underline">Call Queue</span>
+          </h1>
+          <p className="text-sm text-fg-muted mt-1.5">
+            {today} · viewing <span className="font-semibold text-forge-black">{productMeta?.longName || product}</span>
             {!calendlyConnected && (
-              <span className="ml-2 text-amber-700 italic">· Calendly disconnected</span>
+              <span className="ml-2 text-forge-orange-deep italic">· Calendly disconnected</span>
             )}
           </p>
         </div>
@@ -226,7 +237,7 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       <p className="text-xs text-fg-muted mt-3 mb-4">{BUCKETS[bucket].description}</p>
 
       {/* List */}
-      <LeadsList leads={visible} bucketId={bucket} family={family} visibleCols={visibleCols} />
+      <LeadsList leads={visible} bucketId={bucket} family={family} visibleCols={visibleCols} earningsByLead={earningsByLead} />
     </div>
   );
 }
@@ -366,7 +377,7 @@ function BucketTabs({ current, counts, onChange }: {
 // ----------------------------------------------------------------
 // Leads list (table format)
 // ----------------------------------------------------------------
-function LeadsList({ leads, bucketId, family, visibleCols }: { leads: LeadRow[]; bucketId: BucketId; family: Family; visibleCols: Set<ColumnId> }) {
+function LeadsList({ leads, bucketId, family, visibleCols, earningsByLead }: { leads: LeadRow[]; bucketId: BucketId; family: Family; visibleCols: Set<ColumnId>; earningsByLead: Record<string, EarningSummary> }) {
   if (leads.length === 0) {
     const isLiveEmpty = family === "live";
     return (
@@ -406,7 +417,7 @@ function LeadsList({ leads, bucketId, family, visibleCols }: { leads: LeadRow[];
           </thead>
           <tbody>
             {leads.slice(0, 200).map((l, i) => (
-              <LeadRowView key={l.id} lead={l} rank={i + 1} bucketId={bucketId} visibleCols={visibleCols} />
+              <LeadRowView key={l.id} lead={l} rank={i + 1} bucketId={bucketId} visibleCols={visibleCols} earning={earningsByLead[l.id]} />
             ))}
           </tbody>
         </table>
@@ -418,7 +429,7 @@ function LeadsList({ leads, bucketId, family, visibleCols }: { leads: LeadRow[];
   );
 }
 
-function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; rank: number; bucketId: BucketId; visibleCols: Set<ColumnId> }) {
+function LeadRowView({ lead, rank, bucketId, visibleCols, earning }: { lead: LeadRow; rank: number; bucketId: BucketId; visibleCols: Set<ColumnId>; earning?: EarningSummary }) {
   const why = whyHotReason(lead);
   const submittedRecent = hoursSince(lead.first_seen) <= 1;
   const incentive = incentiveFor(lead);
@@ -476,13 +487,7 @@ function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; ran
       )}
       {show("incentive") && (
         <td className="py-3 px-2 whitespace-nowrap">
-          {incentive ? (
-            <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-              title={`${incentive.rep || "Rep"} earns this on Balance Payment for ${incentive.label}${lead.program === "FC" ? " (Goa default · Bali = ₹7,000)" : ""}`}>
-              <IndianRupee className="w-3 h-3" />
-              <span className="text-xs font-bold tabular-nums">{incentive.amount.toLocaleString("en-IN")}</span>
-            </div>
-          ) : <span className="text-fg-subtle text-xs">—</span>}
+          <EarningChip earning={earning} potentialIncentive={incentive} />
         </td>
       )}
       <td className="py-3 px-2">
@@ -512,6 +517,42 @@ function LeadRowView({ lead, rank, bucketId, visibleCols }: { lead: LeadRow; ran
       </td>
     </tr>
   );
+}
+
+function EarningChip({ earning, potentialIncentive }: { earning?: EarningSummary; potentialIncentive: { amount: number; label: string; rep: string | null } | null }) {
+  // Has actual earning row → show its state
+  if (earning) {
+    const amt = `₹${Number(earning.amount_inr).toLocaleString("en-IN")}`;
+    if (earning.status === "locked") return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow font-semibold text-xs tabular-nums" title="Slot confirmed. Push to balance payment to unlock.">
+        🔒 {amt}
+      </span>
+    );
+    if (earning.status === "unlocked") return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 font-semibold text-xs tabular-nums" title="Balance paid. Awaiting admin approval.">
+        ✅ {amt}
+      </span>
+    );
+    if (earning.status === "approved") return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200 font-semibold text-xs tabular-nums" title="Admin approved. Awaiting payout transfer.">
+        ✓ {amt}
+      </span>
+    );
+    if (earning.status === "paid_out") return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-fg-surface text-forge-black/70 ring-1 ring-fg-border font-semibold text-xs tabular-nums" title="Cash transferred to your account.">
+        💵 {amt}
+      </span>
+    );
+  }
+  // Otherwise show potential payout
+  if (potentialIncentive) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-fg-surface text-forge-black/85 ring-1 ring-fg-border text-xs tabular-nums" title={`Potential: ${potentialIncentive.rep || "rep"} earns this on Balance Payment for ${potentialIncentive.label}`}>
+        🪙 ₹{potentialIncentive.amount.toLocaleString("en-IN")}
+      </span>
+    );
+  }
+  return <span className="text-fg-subtle text-xs">—</span>;
 }
 
 function ScoreBadge({ score, breakdown }: { score: number; breakdown?: Record<string, number> }) {

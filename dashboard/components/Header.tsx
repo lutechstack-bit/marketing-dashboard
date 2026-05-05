@@ -1,30 +1,30 @@
-// Auth-aware header. Reads the logged-in rep on the server, shows nav based on role,
-// and includes a sign-out button. Replaces the previous Founder/Sales toggle.
+// Auth-aware header. Reads the logged-in rep on the server.
 
 import Link from "next/link";
-import { LayoutDashboard, Sparkles, Users, Phone, Trophy, ShieldCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, Sparkles, Users, Phone, Trophy, ShieldCheck, Activity } from "lucide-react";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import HeaderClientControls from "./HeaderClientControls";
+import ForgeWordmark from "./ForgeWordmark";
 
 const SALES_NAV = [
-  { href: "/queue",       label: "Daily Queue", icon: Phone },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { href: "/leads",       label: "Leads",       icon: Users },
+  { href: "/queue",       label: "Queue",        icon: Phone },
+  { href: "/leaderboard", label: "Leaderboard",  icon: Trophy },
+  { href: "/leads",       label: "Leads",        icon: Users },
 ];
 
 const FOUNDER_NAV = [
-  { href: "/",         label: "Overview",     icon: LayoutDashboard },
-  { href: "/insights", label: "Insights",     icon: Sparkles },
-  { href: "/queue",    label: "Sales Queue",  icon: Phone },
-  { href: "/leads",    label: "Leads",        icon: Users },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/",            label: "Overview",     icon: LayoutDashboard },
+  { href: "/insights",    label: "Insights",     icon: Sparkles },
+  { href: "/queue",       label: "Queue",        icon: Phone },
+  { href: "/leaderboard", label: "Leaderboard",  icon: Trophy },
+  { href: "/leads",       label: "Leads",        icon: Users },
 ];
 
 const ADMIN_NAV = [
   ...FOUNDER_NAV,
   { href: "/admin/payouts", label: "Payouts", icon: ShieldCheck },
   { href: "/admin/team",    label: "Team",    icon: Users },
-  { href: "/admin/audit",   label: "Audit",   icon: ShieldCheck },
+  { href: "/admin/audit",   label: "Audit",   icon: Activity },
 ];
 
 function navForRole(role: string) {
@@ -42,11 +42,15 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
     <header className="border-b border-fg-border bg-white/85 backdrop-blur sticky top-0 z-30">
       <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-5 min-w-0">
-          <Link href={role === "sales" ? "/queue" : "/"} className="flex items-center gap-2.5 shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-bold text-white shadow-sm">L</div>
-            <div className="hidden sm:block">
-              <div className="text-[13px] font-semibold tracking-tight text-fg-text leading-tight">LevelUp · Sales Intelligence</div>
-              <div className="text-[11px] text-fg-muted leading-tight">{rep ? `Logged in as ${rep.full_name || rep.email} · ${role}` : "Forge data live"}</div>
+          <Link href={role === "sales" ? "/queue" : "/"} className="flex items-center gap-3 shrink-0 group">
+            <div className="w-10 h-10 rounded-xl bg-forge-gradient flex items-center justify-center shadow-card group-hover:shadow-forge-glow transition-shadow">
+              <span className="font-display font-extrabold italic text-forge-black text-lg leading-none">F</span>
+            </div>
+            <div className="hidden sm:flex flex-col leading-tight">
+              <ForgeWordmark size="sm" subtitle="" />
+              <span className="text-[10px] text-fg-muted leading-tight">
+                {rep ? `${rep.full_name || rep.email} · ${role}` : "Sales Intelligence"}
+              </span>
             </div>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
@@ -56,7 +60,7 @@ export default async function Header({ lastSync }: { lastSync?: string }) {
                 <Link
                   key={n.href}
                   href={n.href}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors text-fg-muted hover:text-fg-text hover:bg-fg-surface whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors text-fg-muted hover:text-forge-black hover:bg-forge-yellow-pale whitespace-nowrap font-medium"
                 >
                   <Icon className="w-3.5 h-3.5" />{n.label}
                 </Link>

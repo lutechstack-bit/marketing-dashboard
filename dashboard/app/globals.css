@@ -1,55 +1,113 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* LevelUp · the Forge — dashboard typography + tokens
+ * Per Forge Brand Kit:
+ *   #FFBC3B signature yellow · #222222 warm black · #FCF7EF cream
+ *   Migra Extrabold (display) · Open Sauce (body)
+ * Free alternatives: Playfair Display + Inter (closest Google Fonts pair)
+ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html, body {
   background: #FFFFFF;
-  color: #0F172A;
+  color: #222222;                              /* brand warm-black, not pure black */
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";       /* stylistic alternates for Inter */
 }
 
-/* Light scrollbars */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #F8FAFC; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+/* Display font utility (use sparingly, for branded headlines) */
+.font-display {
+  font-family: 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.01em;
+}
 
-/* Surface card — used everywhere a "panel" is needed */
+/* Warm scrollbars matching the cream palette */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #FCF7EF; }
+::-webkit-scrollbar-thumb { background: #E8DFCB; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #D4C8AE; }
+
+/* ------------------------------- surface card ------------------------------ */
 .surface-card,
 .glow-card {
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
-  border-radius: 12px;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  border: 1px solid #E8DFCB;                   /* warm cream-tinted border */
+  border-radius: 14px;
+  box-shadow: 0 1px 2px 0 rgb(34 34 34 / 0.04), 0 1px 3px 0 rgb(34 34 34 / 0.05);
 }
 .glow-card::before { content: none; }
 
 .surface-card-hover {
-  transition: box-shadow .15s ease, border-color .15s ease;
+  transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease;
 }
 .surface-card-hover:hover {
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06);
-  border-color: #CBD5E1;
+  box-shadow: 0 4px 6px -1px rgb(34 34 34 / 0.08), 0 2px 4px -2px rgb(34 34 34 / 0.05);
+  border-color: #D4C8AE;
 }
 
-/* Smooth fade-in for cards */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.animate-fade-in { animation: fadeIn 0.30s ease-out forwards; }
+/* ------------------------------- animations ------------------------------- */
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shimmer { 0%   { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes pulseGold { 0%,100% { box-shadow: 0 0 0 0 rgb(255 188 59 / 0.4); } 50% { box-shadow: 0 0 0 8px rgb(255 188 59 / 0); } }
 
-/* Subtle row hover */
-.row-hover:hover { background: #F8FAFC; }
+.animate-fade-in   { animation: fadeIn 0.30s ease-out forwards; }
+.animate-pulse-gold{ animation: pulseGold 2.4s ease-in-out infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,188,59,.18) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+}
 
-/* Pill chip baseline */
+/* row hover */
+.row-hover:hover { background: #FCF7EF; }
+
+/* ------------------------------- pill chip -------------------------------- */
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 10px; border-radius: 999px;
   font-size: 11px; font-weight: 500;
-  border: 1px solid #E5E7EB; background: #FFFFFF; color: #475569;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
+  border: 1px solid #E8DFCB; background: #FFFFFF; color: #6B6358;
+  transition: all .12s ease;
 }
-.chip:hover { background: #F8FAFC; color: #0F172A; border-color: #CBD5E1; }
-.chip-active { background: #0F172A; color: #FFFFFF; border-color: #0F172A; }
-.chip-active:hover { background: #1E293B; color: #FFFFFF; border-color: #1E293B; }
+.chip:hover  { background: #FCF7EF; color: #222222; border-color: #D4C8AE; }
+.chip-active { background: #222222; color: #FFFFFF; border-color: #222222; }
+.chip-active:hover { background: #FFBC3B; color: #222222; border-color: #FFBC3B; }
+
+/* ------------------------ branded button ---------------------------------- */
+.btn-forge {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px;
+  background: #FFBC3B; color: #222222;
+  font-weight: 600; font-size: 14px;
+  box-shadow: 0 1px 0 0 rgba(34,34,34,.08);
+  transition: all .15s ease;
+}
+.btn-forge:hover    { background: #FFA800; box-shadow: 0 4px 12px -2px rgb(255 168 0 / 0.45); }
+.btn-forge:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ------------------------ yellow underline accent ------------------------- *
+ * Mimics the brand kit's signature highlight — used under section headers
+ */
+.brand-underline {
+  position: relative; display: inline-block;
+}
+.brand-underline::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 2px;
+  height: 8px; background: #FFBC3B; opacity: .35; border-radius: 2px;
+  z-index: -1;
+}
+
+/* ------------------------ wave decoration --------------------------------- *
+ * Subtle Forge wave used at section breaks
+ */
+.brand-wave {
+  display: block; width: 64px; height: 8px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 8' fill='none' stroke='%23FFBC3B' stroke-width='1.6'><path d='M0 4 Q8 0 16 4 T32 4 T48 4 T64 4'/></svg>");
+  background-size: contain; background-repeat: no-repeat;
+}
+
+/* tabular numbers everywhere we ask for them */
+.tabular-nums { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }

@@ -29,15 +29,12 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
       const sb = createSupabaseBrowserClient();
       const { error: err } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (err) throw err;
-      // Middleware will route based on role
       const next = params.get("next") || "/";
       router.replace(next);
       router.refresh();
     } catch (e: any) {
       setError(e?.message || "Sign-in failed");
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   }
 
   async function handleReset(e: React.FormEvent) {
@@ -52,9 +49,7 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
       setResetSent(true);
     } catch (e: any) {
       setError(e?.message || "Failed to send reset email");
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   }
 
   if (view === "reset") {
@@ -62,26 +57,28 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
       <div className="surface-card p-6">
         {resetSent ? (
           <div className="text-center">
-            <Mail className="w-8 h-8 text-emerald-500 mx-auto mb-3" />
-            <h2 className="font-semibold text-fg-text mb-1">Check your inbox</h2>
-            <p className="text-sm text-fg-muted">We sent a password-reset link to <span className="font-medium text-fg-text">{email}</span>. Click it to set a new password.</p>
-            <button onClick={() => { setView("login"); setResetSent(false); }} className="mt-4 text-xs text-amber-700 hover:text-amber-800">← Back to sign in</button>
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-forge-yellow-soft flex items-center justify-center">
+              <Mail className="w-5 h-5 text-forge-orange-deep" />
+            </div>
+            <h2 className="font-semibold text-forge-black mb-1">Check your inbox</h2>
+            <p className="text-sm text-fg-muted">We sent a reset link to <span className="font-medium text-forge-black">{email}</span>.</p>
+            <button onClick={() => { setView("login"); setResetSent(false); }} className="mt-4 text-xs text-forge-orange-deep hover:text-forge-orange font-medium">← Back to sign in</button>
           </div>
         ) : (
           <form onSubmit={handleReset} className="space-y-4">
             <div>
-              <h2 className="font-semibold text-fg-text mb-1">Reset your password</h2>
+              <h2 className="font-semibold text-forge-black mb-1">Reset your password</h2>
               <p className="text-xs text-fg-muted">Enter your email and we&apos;ll send you a reset link.</p>
             </div>
             <Field label="Email">
-              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-white focus:outline-none focus:border-amber-400" placeholder="you@leveluplearning.in" />
+              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
             </Field>
             {error && <ErrorBox message={error} />}
-            <button type="submit" disabled={submitting || !email} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+            <button type="submit" disabled={submitting || !email} className="btn-forge w-full">
               {submitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Mail className="w-4 h-4"/>}
               Send reset link
             </button>
-            <button type="button" onClick={() => setView("login")} className="w-full text-xs text-fg-muted hover:text-fg-text">← Back to sign in</button>
+            <button type="button" onClick={() => setView("login")} className="w-full text-xs text-fg-muted hover:text-forge-black">← Back to sign in</button>
           </form>
         )}
       </div>
@@ -91,17 +88,17 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
   return (
     <form onSubmit={handleLogin} className="surface-card p-6 space-y-4">
       <Field label="Email">
-        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-white focus:outline-none focus:border-amber-400" placeholder="you@leveluplearning.in" />
+        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
       </Field>
       <Field label="Password">
-        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-white focus:outline-none focus:border-amber-400" placeholder="••••••••" />
+        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="••••••••" />
       </Field>
       {error && <ErrorBox message={error} />}
-      <button type="submit" disabled={submitting || !email || !password} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+      <button type="submit" disabled={submitting || !email || !password} className="btn-forge w-full">
         {submitting ? <Loader2 className="w-4 h-4 animate-spin"/> : <LogIn className="w-4 h-4"/>}
         Sign in
       </button>
-      <button type="button" onClick={() => setView("reset")} className="w-full text-xs text-fg-muted hover:text-fg-text">Forgot password?</button>
+      <button type="button" onClick={() => setView("reset")} className="w-full text-xs text-fg-muted hover:text-forge-black">Forgot password?</button>
     </form>
   );
 }
@@ -109,7 +106,7 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-fg-muted uppercase tracking-wider mb-1.5 font-medium">{label}</label>
+      <label className="block text-[11px] text-fg-muted uppercase tracking-[0.12em] mb-1.5 font-semibold">{label}</label>
       {children}
     </div>
   );

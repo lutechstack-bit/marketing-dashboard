@@ -1,5 +1,5 @@
 import Header from "@/components/Header";
-import { fetchLeads } from "@/lib/supabase";
+import { fetchLeads, supabase } from "@/lib/supabase";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import EarningsHeader from "@/components/EarningsHeader";
@@ -7,32 +7,45 @@ import QueueClient from "@/components/QueueClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-// Calendly fetch can run 5-15s; bump beyond Hobby's 10s default.
 export const maxDuration = 60;
 
 export default async function QueuePage() {
-  // Lead fetch and Calendly fetch in parallel.
-  // Calendly window kept tight (45 days) so the page load stays under ~8s.
-  const [leads, bookings] = await Promise.all([
+  const currentRep = await getCurrentRep();
+
+  // Parallel fetch — lightweight queries
+  const [leads, bookings, earningsRes] = await Promise.all([
     fetchLeads({ limit: 1500 }),
-    fetchBookingsCached(45).catch((e) => {
-      console.error("[queue] Calendly fetch failed:", e?.message, e?.stack?.split("\n")[0]);
-      return [];
-    }),
+    fetchBookingsCached(45).catch(() => []),
+    // For sales reps, only their earnings; admins/founders see everyone's
+    (async () => {
+      let q = supabase
+        .from("incentive_earnings")
+        .select("id,lead_id,rep_id,amount_inr,status,locked_at,unlocked_at,approved_at,paid_out_at,reverted_at")
+        .neq("status", "reverted")
+        .limit(2000);
+      if (currentRep?.role === "sales") q = q.eq("rep_id", currentRep.id);
+      const { data } = await q;
+      return (data || []) as any[];
+    })(),
   ]);
-  console.log(`[queue] leads=${leads.length} calendly_bookings=${bookings.length}`);
 
   const bookingIdx = indexByEmail(bookings);
-  // Set of emails that have an ACTIVE (non-canceled) booking — used by the queue
-  // to know who's already booked an interview.
   const bookedEmails = new Set(
     Object.entries(bookingIdx)
       .filter(([_, bs]) => bs.some(b => b.status !== "canceled"))
       .map(([email]) => email)
   );
 
-  // Logged-in rep — drives EarningsHeader (sales reps only) and the per-rep filter
-  const currentRep = await getCurrentRep();
+  // Index earnings by lead_id (most recent if multiple)
+  const earningsByLead: Record<string, any> = {};
+  for (const e of earningsRes) {
+    if (!e.lead_id) continue;
+    const existing = earningsByLead[e.lead_id];
+    // Prefer non-final status; otherwise the latest
+    const t1 = e.locked_at || e.unlocked_at || e.approved_at || e.paid_out_at || "0";
+    const t0 = existing ? (existing.locked_at || existing.unlocked_at || existing.approved_at || existing.paid_out_at || "0") : "0";
+    if (!existing || t1 > t0) earningsByLead[e.lead_id] = e;
+  }
 
   return (
     <>
@@ -45,6 +58,7 @@ export default async function QueuePage() {
           initialLeads={leads}
           bookedEmails={Array.from(bookedEmails)}
           calendlyConnected={bookings.length > 0}
+          earningsByLead={earningsByLead}
         />
       </main>
     </>

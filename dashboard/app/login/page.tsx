@@ -1,12 +1,12 @@
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { redirect } from "next/navigation";
 import LoginForm from "@/components/auth/LoginForm";
+import ForgeWordmark, { ForgeWave } from "@/components/ForgeWordmark";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const params = await searchParams;
-  // If already logged in, redirect to wherever they came from (or root)
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
@@ -18,16 +18,25 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50/40 via-white to-cyan-50/30 p-6">
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen flex items-center justify-center bg-forge-cream relative overflow-hidden p-6">
+      {/* Decorative orange/yellow blobs */}
+      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-forge-yellow opacity-20 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-forge-orange opacity-15 blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-sm relative">
         <div className="text-center mb-8">
-          <div className="inline-flex w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 items-center justify-center font-bold text-white shadow-md mb-3">L</div>
-          <h1 className="text-2xl font-bold tracking-tight text-fg-text">LevelUp Sales Intelligence</h1>
-          <p className="text-sm text-fg-muted mt-1">Sign in to continue</p>
+          <div className="inline-flex w-14 h-14 rounded-2xl bg-forge-gradient items-center justify-center shadow-soft mb-4">
+            <span className="font-display font-extrabold italic text-forge-black text-2xl leading-none">F</span>
+          </div>
+          <div className="flex justify-center mb-2">
+            <ForgeWordmark size="lg" />
+          </div>
+          <ForgeWave className="mx-auto w-16 h-3 mb-3" />
+          <p className="text-sm text-fg-muted">Sales Intelligence · Sign in to continue</p>
         </div>
         <LoginForm initialError={params.error} />
         <div className="mt-6 text-xs text-fg-subtle text-center">
-          Trouble signing in? Ask Hiresh or admin@leveluplearning.in to send you an invite.
+          Trouble signing in? Ask an admin for an invite.
         </div>
       </div>
     </main>
