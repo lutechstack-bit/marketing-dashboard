@@ -20,21 +20,55 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Hash params from Supabase: either error info OR access_token
+    // Hash params from Supabase: either error info OR access_token (implicit
+    // recovery flow). Query string would carry ?code=... for PKCE flow.
     const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-    const params = new URLSearchParams(hash);
-    const err = params.get("error");
+    const hashParams = new URLSearchParams(hash);
+    const err = hashParams.get("error");
     if (err) {
-      const desc = (params.get("error_description") || "Link is invalid or has expired.").replace(/\+/g, " ");
+      const desc = (hashParams.get("error_description") || "Link is invalid or has expired.").replace(/\+/g, " ");
       setLinkExpired({ description: desc });
       return;
     }
-    // Otherwise, give the Supabase client a moment to pick up the recovery session from the URL hash
+
     const sb = createSupabaseBrowserClient();
     const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
       if (session) setSessionReady(true);
     });
-    sb.auth.getSession().then(({ data }) => { if (data.session) setSessionReady(true); });
+
+    (async () => {
+      // Already signed in (e.g. user came back to this tab) — let them set a new password
+      const { data: existing } = await sb.auth.getSession();
+      if (existing.session) { setSessionReady(true); return; }
+
+      // Implicit flow: tokens land in the URL hash. Set them explicitly because
+      // @supabase/ssr's browser client doesn't always auto-detect implicit hashes.
+      const access_token = hashParams.get("access_token");
+      const refresh_token = hashParams.get("refresh_token");
+      if (access_token && refresh_token) {
+        const { error: setErr } = await sb.auth.setSession({ access_token, refresh_token });
+        if (setErr) setLinkExpired({ description: setErr.message || "Recovery link is invalid or expired." });
+        else {
+          setSessionReady(true);
+          // Strip the tokens out of the URL so a refresh doesn't re-process them.
+          history.replaceState(null, "", window.location.pathname);
+        }
+        return;
+      }
+
+      // PKCE flow: ?code=... in query string — exchange for session
+      const code = new URLSearchParams(window.location.search).get("code");
+      if (code) {
+        const { error: exErr } = await sb.auth.exchangeCodeForSession(code);
+        if (exErr) setLinkExpired({ description: exErr.message || "Recovery link is invalid or expired." });
+        else { setSessionReady(true); history.replaceState(null, "", window.location.pathname); }
+        return;
+      }
+
+      // No tokens at all — the user landed here without a recovery link
+      setLinkExpired({ description: "No recovery token found. Use a fresh password reset link." });
+    })();
+
     return () => { sub.subscription.unsubscribe(); };
   }, []);
 
