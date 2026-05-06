@@ -128,10 +128,10 @@ export default function ResetPasswordPage() {
         ) : (
           <form onSubmit={handleReset} className="surface-card p-6 space-y-4">
             <Field label="New password">
-              <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="at least 8 characters" />
+              <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="at least 8 characters" />
             </Field>
             <Field label="Confirm">
-              <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" />
+              <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" />
             </Field>
             {error && (
               <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-xs">

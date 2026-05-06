@@ -102,7 +102,7 @@ export default function InsightsClient({ insights }: { insights: InsightsPayload
           <div className="inline-flex items-center bg-fg-surface border border-fg-border rounded-lg p-0.5">
             {(["forge", "live"] as Family[]).map(f => (
               <button key={f} onClick={() => setParam("family", f)}
-                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${family === f ? "bg-white text-fg-text shadow-sm" : "text-fg-muted hover:text-fg-text"}`}>
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${family === f ? "bg-fg-card text-fg-text shadow-sm" : "text-fg-muted hover:text-fg-text"}`}>
                 {familyLabel(f)}
               </button>
             ))}

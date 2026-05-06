@@ -268,7 +268,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], curren
           <button
             onClick={() => logActivity("lost")}
             disabled={submitting}
-            className="w-full mt-2 px-3 py-2 text-sm rounded-md border border-rose-200 text-rose-700 bg-white hover:bg-rose-50 disabled:opacity-50"
+            className="w-full mt-2 px-3 py-2 text-sm rounded-md border border-rose-200 text-rose-700 bg-fg-card hover:bg-rose-50 disabled:opacity-50"
           >Mark lost</button>
 
           <div className="mt-3 pt-3 border-t border-fg-border/70">
@@ -282,7 +282,7 @@ export default function LeadDetailClient({ detail, calendlyBookings = [], curren
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               placeholder="Anything worth remembering — objections, family dynamic, follow-up date…"
-              className="flex-1 text-sm px-3 py-2 rounded-md border border-fg-border bg-white focus:border-forge-yellow focus:outline-none resize-none min-h-[64px]"
+              className="flex-1 text-sm px-3 py-2 rounded-md border border-fg-border bg-fg-card focus:border-forge-yellow focus:outline-none resize-none min-h-[64px]"
             />
             <button
               onClick={submitNote}
@@ -450,11 +450,11 @@ function ActionLink({ href, icon, label, tone, external }: { href: string; icon:
 }
 
 function OutcomeBtn({ icon, label, tone, onClick }: { icon: React.ReactNode; label: string; tone: "slate" | "emerald" | "rose" | "cyan" | "emeraldFilled"; onClick: () => void }) {
-  const cls = tone === "emerald"        ? "border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50"
+  const cls = tone === "emerald"        ? "border-emerald-200 text-emerald-700 bg-fg-card hover:bg-emerald-50"
             : tone === "emeraldFilled"  ? "border-forge-orange-deep text-forge-black bg-forge-yellow hover:bg-forge-orange shadow-soft"
-            : tone === "rose"           ? "border-rose-200 text-rose-700 bg-white hover:bg-rose-50"
-            : tone === "cyan"           ? "border-forge-yellow-soft text-forge-orange-deep bg-white hover:bg-forge-yellow-pale"
-            :                              "border-fg-border text-forge-black bg-white hover:bg-fg-surface";
+            : tone === "rose"           ? "border-rose-200 text-rose-700 bg-fg-card hover:bg-rose-50"
+            : tone === "cyan"           ? "border-forge-yellow-soft text-forge-orange-deep bg-fg-card hover:bg-forge-yellow-pale"
+            :                              "border-fg-border text-forge-black bg-fg-card hover:bg-fg-surface";
   return (
     <button onClick={onClick} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${cls}`}>
       {icon}{label}

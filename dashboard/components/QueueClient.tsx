@@ -337,7 +337,7 @@ function FamilyTabs({ current, onChange }: { current: Family; onChange: (f: Fami
           key={f}
           onClick={() => onChange(f)}
           className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${
-            current === f ? "bg-white text-fg-text shadow-sm" : "text-fg-muted hover:text-fg-text"
+            current === f ? "bg-fg-card text-fg-text shadow-sm" : "text-fg-muted hover:text-fg-text"
           }`}
         >
           {familyLabel(f)}
@@ -444,7 +444,7 @@ function BucketTabs({ current, counts, onChange }: {
             key={id}
             onClick={() => onChange(id)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              isActive ? def.cls + " ring-2 ring-offset-1 ring-current/20" : "border-fg-border text-fg-muted bg-white hover:bg-fg-surface hover:text-fg-text"
+              isActive ? def.cls + " ring-2 ring-offset-1 ring-current/20" : "border-fg-border text-fg-muted bg-fg-card hover:bg-fg-surface hover:text-fg-text"
             }`}
           >
             <span>{def.label}</span>

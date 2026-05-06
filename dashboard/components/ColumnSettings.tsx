@@ -81,7 +81,7 @@ export default function ColumnSettings({ visible, onChange }: {
       <button
         onClick={() => setOpen(o => !o)}
         title="Choose which columns to show"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-fg-muted hover:text-fg-text border border-fg-border rounded-md bg-white hover:bg-fg-surface transition-colors"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-fg-muted hover:text-fg-text border border-fg-border rounded-md bg-fg-card hover:bg-fg-surface transition-colors"
       >
         <Settings2 className="w-3.5 h-3.5" />
         <span>Columns</span>
@@ -101,7 +101,7 @@ export default function ColumnSettings({ visible, onChange }: {
                 className="w-full text-left px-3 py-2 text-sm flex items-start gap-2.5 hover:bg-fg-surface"
                 title={c.help}
               >
-                <span className={`mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded border ${on ? "bg-emerald-500 border-emerald-500" : "border-fg-border bg-white"}`}>
+                <span className={`mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded border ${on ? "bg-emerald-500 border-emerald-500" : "border-fg-border bg-fg-card"}`}>
                   {on && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                 </span>
                 <span className="flex-1 min-w-0">

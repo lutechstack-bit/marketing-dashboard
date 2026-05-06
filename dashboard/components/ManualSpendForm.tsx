@@ -113,7 +113,7 @@ export default function ManualSpendForm() {
           <li>Paste the block below → Run</li>
           <li>Refresh this page</li>
         </ol>
-        <pre className="text-[10px] bg-white border border-amber-200 rounded p-3 overflow-x-auto leading-relaxed">{`CREATE TABLE IF NOT EXISTS manual_marketing_spend (
+        <pre className="text-[10px] bg-fg-card border border-amber-200 rounded p-3 overflow-x-auto leading-relaxed">{`CREATE TABLE IF NOT EXISTS manual_marketing_spend (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel       TEXT NOT NULL DEFAULT 'youtube_collab',
   source_name   TEXT,
@@ -158,27 +158,27 @@ CREATE INDEX IF NOT EXISTS idx_manual_spend_program ON manual_marketing_spend(pr
         <div className="border border-fg-border rounded-lg p-4 mb-4 bg-fg-surface">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             <Field label="Channel">
-              <select value={channel} onChange={e => setChannel(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white">
+              <select value={channel} onChange={e => setChannel(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card">
                 {Object.entries(CHANNEL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
             <Field label="Date *">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white" />
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card" />
             </Field>
             <Field label="Amount ₹ *">
-              <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white" placeholder="25000" />
+              <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card" placeholder="25000" />
             </Field>
             <Field label="Source / creator name">
-              <input type="text" value={sourceName} onChange={e => setSourceName(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white" placeholder="e.g. Tanmay Bhat" />
+              <input type="text" value={sourceName} onChange={e => setSourceName(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card" placeholder="e.g. Tanmay Bhat" />
             </Field>
             <Field label="Program (optional)">
-              <select value={program} onChange={e => setProgram(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white">
+              <select value={program} onChange={e => setProgram(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card">
                 <option value="">All / mixed</option>
                 {PRODUCTS.map(p => <option key={p.code} value={p.code}>{p.longName}</option>)}
               </select>
             </Field>
             <Field label="Notes (optional)">
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-white" placeholder="Video URL, contract notes..." />
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full text-sm px-2 py-1.5 border border-fg-border rounded bg-fg-card" placeholder="Video URL, contract notes..." />
             </Field>
           </div>
           <div className="flex justify-end">

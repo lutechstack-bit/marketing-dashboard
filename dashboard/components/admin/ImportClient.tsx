@@ -382,7 +382,7 @@ function MapStep({
                     <select
                       value={(mapping as any)[f.key] || ""}
                       onChange={e => updateMap(f.key, e.target.value)}
-                      className="text-xs px-2 py-1.5 border border-fg-border rounded-md bg-white"
+                      className="text-xs px-2 py-1.5 border border-fg-border rounded-md bg-fg-card"
                     >
                       <option value="">— skip —</option>
                       {columns.map(c => <option key={c} value={c}>{c}</option>)}
@@ -403,7 +403,7 @@ function MapStep({
                 <select
                   value={defaults.program || ""}
                   onChange={e => setDefaults({ ...defaults, program: e.target.value || undefined })}
-                  className="text-sm px-2 py-1.5 border border-fg-border rounded-md bg-white"
+                  className="text-sm px-2 py-1.5 border border-fg-border rounded-md bg-fg-card"
                 >
                   <option value="">— per-row from CSV —</option>
                   {PROGRAMS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -519,10 +519,10 @@ function RunProgress({
             <Stat label="Errors"   value={progress.errors}   tone="rose" />
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={onPauseToggle} className="px-3 py-1.5 text-xs font-medium rounded-md border border-fg-border bg-white hover:bg-fg-surface inline-flex items-center gap-1">
+            <button onClick={onPauseToggle} className="px-3 py-1.5 text-xs font-medium rounded-md border border-fg-border bg-fg-card hover:bg-fg-surface inline-flex items-center gap-1">
               {paused ? <><Play className="w-3.5 h-3.5"/>Resume</> : <><Pause className="w-3.5 h-3.5"/>Pause</>}
             </button>
-            <button onClick={onAbort} className="px-3 py-1.5 text-xs font-medium rounded-md border border-rose-200 text-rose-700 bg-white hover:bg-rose-50 inline-flex items-center gap-1">
+            <button onClick={onAbort} className="px-3 py-1.5 text-xs font-medium rounded-md border border-rose-200 text-rose-700 bg-fg-card hover:bg-rose-50 inline-flex items-center gap-1">
               <Trash2 className="w-3.5 h-3.5"/>Abort
             </button>
           </div>

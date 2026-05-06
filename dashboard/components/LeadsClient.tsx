@@ -189,8 +189,8 @@ export default function LeadsClient({ initialLeads, reps = [] }: { initialLeads:
   return (
     <div>
       {/* Top bar — search, count, clear-all */}
-      <div className="flex items-center gap-3 mb-4 sticky top-[60px] z-20 py-3 -mx-6 px-6 bg-white/85 backdrop-blur border-b border-fg-border">
-        <div className="flex items-center gap-2 flex-1 max-w-md px-3 py-2 rounded-lg border border-fg-border bg-fg-surface focus-within:border-forge-yellow focus-within:bg-white transition-colors">
+      <div className="flex items-center gap-3 mb-4 sticky top-[60px] z-20 py-3 -mx-6 px-6 bg-fg-card/85 backdrop-blur border-b border-fg-border">
+        <div className="flex items-center gap-2 flex-1 max-w-md px-3 py-2 rounded-lg border border-fg-border bg-fg-surface focus-within:border-forge-yellow focus-within:bg-fg-card transition-colors">
           <Search className="w-4 h-4 text-fg-subtle" />
           <input
             value={search} onChange={e => setSearch(e.target.value)}

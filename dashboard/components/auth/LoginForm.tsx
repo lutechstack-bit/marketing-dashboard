@@ -106,7 +106,7 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
               <p className="text-xs text-fg-muted">Enter your email and we&apos;ll send you a reset link.</p>
             </div>
             <Field label="Email">
-              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
+              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
             </Field>
             {error && <ErrorBox message={error} />}
             <button type="submit" disabled={submitting || !email} className="btn-forge w-full">
@@ -144,16 +144,16 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
           <p className="text-xs text-fg-muted">An admin will review and assign you a role before you can sign in.</p>
         </div>
         <Field label="Full name">
-          <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="Jane Doe" />
+          <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="Jane Doe" />
         </Field>
         <Field label="Email">
-          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
+          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
         </Field>
         <Field label="Password">
-          <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="at least 8 characters" />
+          <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="at least 8 characters" />
         </Field>
         <Field label="Confirm password">
-          <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" />
+          <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" />
         </Field>
         {error && <ErrorBox message={error} />}
         <button type="submit" disabled={submitting || !email || !password || !confirm || !fullName} className="btn-forge w-full">
@@ -175,10 +175,10 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
         </div>
       )}
       <Field label="Email">
-        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
+        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="you@leveluplearning.in" />
       </Field>
       <Field label="Password">
-        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-white focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="••••••••" />
+        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" className="w-full text-sm px-3 py-2.5 border border-fg-border rounded-md bg-fg-card focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20" placeholder="••••••••" />
       </Field>
       {error && !pending && <ErrorBox message={error} />}
       <button type="submit" disabled={submitting || !email || !password} className="btn-forge w-full">

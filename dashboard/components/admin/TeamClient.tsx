@@ -302,7 +302,7 @@ function AddUserForm({ products, onClose, onCreated }: { products: Product[]; on
             <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full text-sm px-3 py-2 border border-fg-border rounded-md" placeholder="+91 9xxx xxx xxx" />
           </Field>
           <Field label="Role *">
-            <select value={role} onChange={e => setRole(e.target.value as Rep["role"])} className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-white">
+            <select value={role} onChange={e => setRole(e.target.value as Rep["role"])} className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card">
               <option value="sales">Sales rep</option>
               <option value="founder">Founder</option>
               <option value="admin">Admin (founder + payouts)</option>
@@ -320,7 +320,7 @@ function AddUserForm({ products, onClose, onCreated }: { products: Product[]; on
               {assignments.length === 0 && <div className="text-xs text-fg-subtle italic">No programs assigned yet — add at least one if this rep should earn incentives.</div>}
               {assignments.map((a, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <select value={a.product_code} onChange={e => updateAssignment(i, "product_code", e.target.value)} className="col-span-3 text-sm px-2 py-1.5 border border-fg-border rounded-md bg-white">
+                  <select value={a.product_code} onChange={e => updateAssignment(i, "product_code", e.target.value)} className="col-span-3 text-sm px-2 py-1.5 border border-fg-border rounded-md bg-fg-card">
                     {products.map(p => <option key={p.code} value={p.code}>{p.code} · {p.name}</option>)}
                   </select>
                   <input value={a.edition_match} onChange={e => updateAssignment(i, "edition_match", e.target.value)} placeholder="edition regex (optional)" className="col-span-3 text-sm px-2 py-1.5 border border-fg-border rounded-md" />
