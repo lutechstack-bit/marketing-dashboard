@@ -1,6 +1,8 @@
 import { loadAll } from "@/lib/data";
 import { fetchUnifiedKpis } from "@/lib/unified-kpis";
 import { fetchCampaignPerformance, fetchTopAds } from "@/lib/meta-ads";
+import { fetchRevenueMetrics } from "@/lib/revenue-tracker";
+import RevenueTrackerStrip from "@/components/RevenueTrackerStrip";
 import { inr, fmtInt } from "@/lib/format";
 import Header from "@/components/Header";
 import KpiCard from "@/components/KpiCard";
@@ -26,13 +28,15 @@ export default async function HomePage() {
   let unifiedKpis: Awaited<ReturnType<typeof fetchUnifiedKpis>> = null;
   let metaCampaigns: Awaited<ReturnType<typeof fetchCampaignPerformance>> = null;
   let metaTopAds: Awaited<ReturnType<typeof fetchTopAds>> = null;
+  let revenue: Awaited<ReturnType<typeof fetchRevenueMetrics>> | null = null;
   let error: string | null = null;
   try {
-    [data, unifiedKpis, metaCampaigns, metaTopAds] = await Promise.all([
+    [data, unifiedKpis, metaCampaigns, metaTopAds, revenue] = await Promise.all([
       loadAll(),
       fetchUnifiedKpis(),
       fetchCampaignPerformance({ daysBack: 30 }).catch(() => null),
       fetchTopAds({ daysBack: 30, limit: 12 }).catch(() => null),
+      fetchRevenueMetrics().catch(() => null),
     ]);
   } catch (e: any) { error = e?.message || "Failed to load data"; }
 
@@ -101,6 +105,9 @@ export default async function HomePage() {
               sublabel={`${unifiedKpis.confirmed_count.now} balance-paid`} invert icon={<TrendingUp className="w-4 h-4" />} />
           </div>
         )}
+
+        {/* Revenue & Cash Flow — sourced from the LevelUp Revenue Tracker sheet */}
+        <RevenueTrackerStrip metrics={revenue} />
 
         {/* Per-program scorecards */}
         <ProgramScorecards

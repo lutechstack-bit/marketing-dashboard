@@ -2,7 +2,9 @@ import Header from "@/components/Header";
 import { fetchLeadsLight, supabase } from "@/lib/supabase";
 import { loadAll } from "@/lib/data";
 import { buildInsights } from "@/lib/insights-server";
+import { fetchRevenueMetrics } from "@/lib/revenue-tracker";
 import InsightsClient from "@/components/InsightsClient";
+import RevenueTrackerStrip from "@/components/RevenueTrackerStrip";
 import type { Family } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +21,10 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const customStart = params.start as string | undefined;
   const customEnd = params.end as string | undefined;
 
-  // Parallel fetch — leads (lightweight, no joins), payments, activities, sheet
-  const [leads, sheetData, paymentsRes, activitiesRes] = await Promise.all([
-    fetchLeadsLight({ limit: 10000 }),
+  // Parallel fetch — leads (lightweight, no joins), payments, activities, sheet,
+  // revenue tracker
+  const [leads, sheetData, paymentsRes, activitiesRes, revenue] = await Promise.all([
+    fetchLeadsLight({ limit: 50000 }),
     loadAll().catch((e) => {
       console.error("[insights] sheet load failed:", e?.message);
       return null;
@@ -37,6 +40,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
       .select("rep_name,lead_id,action,created_at")
       .order("created_at", { ascending: false })
       .limit(5000),
+    fetchRevenueMetrics().catch(() => null),
   ]);
 
   // Aggregate server-side — client receives small JSON
@@ -52,6 +56,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     <>
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
+        <RevenueTrackerStrip metrics={revenue} />
         <InsightsClient insights={insights} />
       </main>
     </>
