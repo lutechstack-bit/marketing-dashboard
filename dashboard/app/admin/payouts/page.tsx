@@ -13,23 +13,35 @@ export default async function PayoutsPage() {
 
   // Fetch all earnings in non-final states + recent paid out (last 90d) for context
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400_000).toISOString();
-  const [earningsRes, repsRes, leadsRes, assignmentsRes] = await Promise.all([
+  // We pull leads ONLY for the rows that have earnings (so the table can show
+  // the lead's name next to each earning). The modal uses /api/admin/lead-search
+  // for server-side search across the full 41k+ leads — no need to load them all.
+  const [earningsRes, repsRes, assignmentsRes] = await Promise.all([
     supabase.from("incentive_earnings")
       .select("*")
       .or(`status.eq.locked,status.eq.unlocked,status.eq.approved,and(status.eq.paid_out,paid_out_at.gte.${ninetyDaysAgo}),and(status.eq.reverted,reverted_at.gte.${ninetyDaysAgo})`)
       .order("locked_at", { ascending: false })
       .limit(500),
     supabase.from("sales_reps").select("id,full_name,email,role,active").eq("active", true),
-    supabase.from("leads").select("id,name,email,phone,program,funnel_stage").limit(10000),
     supabase.from("rep_assignments").select("rep_id,product_code,edition_match,edition_label,incentive_inr").eq("active", true),
   ]);
 
   const earnings = (earningsRes.data || []) as any[];
   const reps = (repsRes.data || []) as any[];
-  const leads = (leadsRes.data || []) as any[];
   const assignments = (assignmentsRes.data || []) as any[];
   const repsById = Object.fromEntries(reps.map((r: any) => [r.id, r]));
-  const leadsById = Object.fromEntries(leads.map((l: any) => [l.id, l]));
+
+  // Fetch JUST the leads referenced by these earnings, in chunks of 200 ids.
+  const leadIds = Array.from(new Set(earnings.map((e: any) => e.lead_id).filter(Boolean)));
+  const leadsById: Record<string, any> = {};
+  for (let i = 0; i < leadIds.length; i += 200) {
+    const chunk = leadIds.slice(i, i + 200);
+    const { data } = await supabase
+      .from("leads")
+      .select("id,name,email,phone,program,funnel_stage")
+      .in("id", chunk);
+    for (const l of (data || []) as any[]) leadsById[l.id] = l;
+  }
 
   return (
     <>
@@ -41,7 +53,6 @@ export default async function PayoutsPage() {
           leadsById={leadsById}
           reps={reps}
           assignments={assignments}
-          allLeads={leads}
         />
       </main>
     </>
