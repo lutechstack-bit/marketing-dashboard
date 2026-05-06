@@ -1,17 +1,18 @@
-import { fetchLeadStats, fetchLeads, supabase } from "@/lib/supabase";
+import { fetchLeads, supabase } from "@/lib/supabase";
+import { fetchLeadsStats } from "@/lib/leads-stats";
 import Header from "@/components/Header";
 import LeadsClient from "@/components/LeadsClient";
 import { Flame, TrendingUp, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function LeadsPage() {
-  // Only enrich what /leads actually displays: payment count + last_action.
-  // form_submissions enrichment was wasteful here — leads.first_seen is fine.
-  // reps + their assignments power the per-rep filter chip in LeadsClient
-  // (was previously hardcoded for Pranaush/Sashank/Wilson).
+  // Single source of truth for stats: fetchLeadsStats covers all 7 programs
+  // (the legacy fetchLeadStats hardcoded only FFM/FW/FC/FAI — VE/BFP/L3C
+  // were invisible in the per-program counts).
   const [stats, leads, repsRes, assignmentsRes] = await Promise.all([
-    fetchLeadStats(),
+    fetchLeadsStats({ family: "all", period: "all" }),
     fetchLeads({ limit: 2000, enrichments: ["payments", "activities"] }),
     supabase.from("sales_reps").select("id,full_name,email").eq("active", true).eq("role", "sales"),
     supabase.from("rep_assignments").select("rep_id,product_code").eq("active", true),
@@ -35,13 +36,13 @@ export default async function LeadsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-fg-text">Lead Intelligence</h1>
             <p className="text-sm text-fg-muted mt-1">
-              {stats.total.toLocaleString("en-IN")} scored leads · click any name to open the full timeline
+              {stats.total.toLocaleString("en-IN")} leads · {stats.scoreable.toLocaleString("en-IN")} scoreable · click any name to open the full timeline
             </p>
           </div>
           <div className="flex gap-2.5">
-            <KpiPill label="Need to book interview" value={stats.rescue_zone} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
-            <KpiPill label="Hot 75+" value={stats.hot_75plus} icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
-            <KpiPill label="Total"   value={stats.total}      icon={<Users className="w-3.5 h-3.5" />} accent="slate" />
+            <KpiPill label="Need to book interview" value={stats.by_stage["accepted"] || 0} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
+            <KpiPill label="Hot 75+"  value={stats.hot}       icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
+            <KpiPill label="Total"    value={stats.total}     icon={<Users className="w-3.5 h-3.5" />} accent="slate" />
           </div>
         </div>
 

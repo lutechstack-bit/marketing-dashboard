@@ -1,5 +1,6 @@
 import Header from "@/components/Header";
-import { fetchLeads, fetchQueueCounts, supabase } from "@/lib/supabase";
+import { fetchLeads, supabase } from "@/lib/supabase";
+import { fetchLeadsStats } from "@/lib/leads-stats";
 import { fetchBookingsCached, indexByEmail } from "@/lib/calendly";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import EarningsHeader from "@/components/EarningsHeader";
@@ -23,7 +24,7 @@ export default async function QueuePage() {
   // (score 30+) every time, leaving 0 partials in the slice.
   //
   // Three parallel queries × per-bucket limits = guaranteed coverage.
-  const [partialLeads, submittedLeads, paidLeads, queueCounts, bookings, earningsRes] = await Promise.all([
+  const [partialLeads, submittedLeads, paidLeads, leadsStats, bookings, earningsRes] = await Promise.all([
     fetchLeads({
       limit: 1500,
       stages: ["form_partial"],
@@ -42,7 +43,7 @@ export default async function QueuePage() {
       enrichments: ["activities"],
       sort: "recent",
     }),
-    fetchQueueCounts(),
+    fetchLeadsStats({ family: "all", period: "all" }),
     fetchBookingsCached(45).catch(() => []),
     // For sales reps, only their earnings; admins/founders see everyone's
     (async () => {
@@ -102,7 +103,7 @@ export default async function QueuePage() {
           bookedEmails={Array.from(bookedEmails)}
           calendlyConnected={bookings.length > 0}
           earningsByLead={earningsByLead}
-          totalCounts={queueCounts}
+          totalCounts={Object.fromEntries(Object.entries(leadsStats.by_program).map(([k, v]) => [k, v.by_stage]))}
         />
       </main>
     </>
