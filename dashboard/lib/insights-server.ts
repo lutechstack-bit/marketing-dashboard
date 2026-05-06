@@ -10,7 +10,7 @@ import { PRODUCTS_BY_FAMILY, PRODUCT_BY_CODE, type Family } from "./products";
 // Types — what the client receives
 // ----------------------------------------------------------------
 export type InsightsPayload = {
-  period: { id: string; label: string; startMs: number; endMs: number; prevStartMs: number; prevEndMs: number };
+  period: { id: string; label: string; isAll: boolean; startMs: number | null; endMs: number; prevStartMs: number | null; prevEndMs: number | null };
   family: Family;
   hero: {
     total_leads: number;
@@ -140,16 +140,19 @@ function median(xs: number[]): number {
 
 function buildPeriod(id: string, customStart?: string, customEnd?: string) {
   const now = Date.now(), dayMs = 86400_000;
-  let start: number, end = now, label = "";
-  if (id === "today")        { const d = new Date(); d.setHours(0,0,0,0); start = d.getTime(); label = "Today"; }
+  let start: number | null, end = now, label = "";
+  let isAll = false;
+  if (id === "all")          { start = null; end = now; label = "All time"; isAll = true; }
+  else if (id === "today")   { const d = new Date(); d.setHours(0,0,0,0); start = d.getTime(); label = "Today"; }
   else if (id === "7d")      { start = now - 7  * dayMs; label = "Last 7 days"; }
+  else if (id === "30d")     { start = now - 30 * dayMs; label = "Last 30 days"; }
   else if (id === "mtd")     { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); start = d.getTime(); label = "Month to date"; }
   else if (id === "custom")  { start = customStart ? new Date(customStart).getTime() : now - 30 * dayMs;
                                 end = customEnd ? new Date(customEnd).getTime() : now;
                                 label = `${new Date(start).toLocaleDateString("en-IN")} → ${new Date(end).toLocaleDateString("en-IN")}`; }
-  else                       { start = now - 30 * dayMs; label = "Last 30 days"; }
-  const len = end - start;
-  return { id, label, startMs: start, endMs: end, prevStartMs: start - len, prevEndMs: start };
+  else                       { start = null; end = now; label = "All time"; isAll = true; }  // default = all time
+  const len = start !== null ? end - start : 0;
+  return { id, label, isAll, startMs: start, endMs: end, prevStartMs: start !== null ? start - len : null, prevEndMs: start };
 }
 
 // ----------------------------------------------------------------
@@ -172,12 +175,28 @@ export function buildInsights(input: {
   // --- Per-product aggregation
   const products: ProductInsight[] = productCodes.map(code => {
     const product = PRODUCT_BY_CODE[code]!;
-    const inPeriod = (l: LeadRow) => l.program === code && l.first_seen
-      && new Date(l.first_seen).getTime() >= period.startMs
-      && new Date(l.first_seen).getTime() < period.endMs;
-    const inPrev = (l: LeadRow) => l.program === code && l.first_seen
-      && new Date(l.first_seen).getTime() >= period.prevStartMs
-      && new Date(l.first_seen).getTime() < period.prevEndMs;
+    // "All time" → count every lead in this program (no date filter at all).
+    // Otherwise filter by first_seen if known, else fall back to created_at
+    // (the row insert time — best we have when the original Tally date is
+    // missing, e.g. CSV-imported leads where the source had no date column).
+    const leadDate = (l: LeadRow): number | null => {
+      const ts = l.first_seen || (l as any).created_at || null;
+      if (!ts) return null;
+      const t = new Date(ts).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+    const inPeriod = (l: LeadRow) => {
+      if (l.program !== code) return false;
+      if (period.isAll) return true;
+      const t = leadDate(l);
+      return t !== null && t >= (period.startMs as number) && t < period.endMs;
+    };
+    const inPrev = (l: LeadRow) => {
+      if (l.program !== code) return false;
+      if (period.isAll || period.prevStartMs === null || period.prevEndMs === null) return false;
+      const t = leadDate(l);
+      return t !== null && t >= period.prevStartMs && t < period.prevEndMs;
+    };
 
     const cur = leads.filter(inPeriod);
     const prev = leads.filter(inPrev);
@@ -213,10 +232,10 @@ export function buildInsights(input: {
     const delta_avg_mql = avg_mql - prevAvg;
     const delta_hot_pct = Math.round(10 * (hot_pct - prevHotPct)) / 10;
 
-    // Sparkline (14d trailing avg MQL)
+    // Sparkline (14d trailing avg MQL) — anchor to "now" if period is all-time
     const dayMs = 86400_000, sparkPoints = 14;
     const sparkEnd = period.endMs;
-    const sparkStart = sparkEnd - sparkPoints * dayMs;
+    const sparkStart = (period.startMs ?? sparkEnd) - sparkPoints * dayMs;
     const sBuckets: { sum: number; n: number }[] = Array.from({ length: sparkPoints }, () => ({ sum: 0, n: 0 }));
     for (const l of leads) {
       if (l.program !== code || !l.first_seen) continue;
@@ -238,13 +257,20 @@ export function buildInsights(input: {
     const t4 = scoreableCur.filter(l => (l.score || 0) >= 60 && (l.score || 0) < 75).length;                          // WARM
     const t5 = scoreableCur.filter(l => (l.score || 0) >= 75).length;                                                 // HOT
 
-    // Marketing spend for this product in period (from sheet, prorated by overlap)
-    const start = period.startMs, end = period.endMs;
+    // Marketing spend for this product in period (from sheet, prorated by overlap).
+    // For "all time" we sum every month available — same source, no proration.
+    const start = period.startMs ?? -Infinity;
+    const end = period.endMs;
     let prodSpend = 0, prodLeadsAttr = 0;
     for (const m of marketingMonthly) {
       if (m.program !== code) continue;
       const monthStart = new Date(m.year, m.month - 1, 1).getTime();
       const monthEnd = new Date(m.year, m.month, 1).getTime();
+      if (period.isAll) {
+        prodSpend += (m.spend_inr_incl_gst || 0);
+        prodLeadsAttr += (m.leads || 0);
+        continue;
+      }
       const overlapStart = Math.max(monthStart, start);
       const overlapEnd = Math.min(monthEnd, end);
       if (overlapEnd <= overlapStart) continue;
@@ -293,12 +319,31 @@ export function buildInsights(input: {
   });
 
   // --- Hero (family-wide totals)
+  // Same logic as per-product: respect "all time" by skipping the date filter,
+  // and fall back to created_at when first_seen is null.
+  const familyHas = (l: LeadRow) => productCodes.includes(l.program || "");
+  const familyDate = (l: LeadRow): number | null => {
+    const ts = l.first_seen || (l as any).created_at || null;
+    if (!ts) return null;
+    const t = new Date(ts).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const familyInPeriod = (l: LeadRow) => {
+    if (!familyHas(l)) return false;
+    if (period.isAll) return true;
+    const t = familyDate(l);
+    return t !== null && t >= (period.startMs as number) && t < period.endMs;
+  };
+  const familyInPrev = (l: LeadRow) => {
+    if (!familyHas(l)) return false;
+    if (period.isAll || period.prevStartMs === null || period.prevEndMs === null) return false;
+    const t = familyDate(l);
+    return t !== null && t >= period.prevStartMs && t < period.prevEndMs;
+  };
+
   const totalLeads = products.reduce((s, p) => s + p.count, 0);
   const totalScoreable = products.reduce((s, p) => s + p.scoreable, 0);
-  const familyScoreableLeads = leads.filter(l => productCodes.includes(l.program || "")
-    && l.first_seen
-    && new Date(l.first_seen).getTime() >= period.startMs
-    && new Date(l.first_seen).getTime() < period.endMs
+  const familyScoreableLeads = leads.filter(l => familyInPeriod(l)
     && l.score_breakdown && Object.keys(l.score_breakdown).length > 0);
   const familyScores = familyScoreableLeads.map(l => l.score || 0);
   const avgMql = familyScores.length ? Math.round(familyScores.reduce((s, x) => s + x, 0) / familyScores.length) : 0;
@@ -307,10 +352,7 @@ export function buildInsights(input: {
   const superHot = familyScoreableLeads.filter(l => (l.score || 0) >= 75).length;
   const hotPct = familyScoreableLeads.length ? Math.round(1000 * hot / familyScoreableLeads.length) / 10 : 0;
 
-  const prevTotalLeads = leads.filter(l => productCodes.includes(l.program || "")
-    && l.first_seen
-    && new Date(l.first_seen).getTime() >= period.prevStartMs
-    && new Date(l.first_seen).getTime() < period.prevEndMs).length;
+  const prevTotalLeads = leads.filter(familyInPrev).length;
   const leadsDeltaPct = prevTotalLeads > 0 ? Math.round(1000 * (totalLeads - prevTotalLeads) / prevTotalLeads) / 10 : 0;
 
   // Family-wide marketing spend in period
@@ -324,13 +366,18 @@ export function buildInsights(input: {
     if (p.status !== "captured") continue;
     if (!productCodes.includes(p.program || "")) continue;
     const t = new Date(p.paid_at).getTime();
-    if (t >= period.startMs && t < period.endMs) totalRevenue += Number(p.amount_inr) || 0;
+    if (period.isAll || (t >= (period.startMs as number) && t < period.endMs)) {
+      totalRevenue += Number(p.amount_inr) || 0;
+    }
   }
 
-  // --- Daily trend (avg MQL per program per day)
+  // --- Daily trend (avg MQL per program per day) — for "all time" we use
+  // the last 90 days, since rendering thousands of days would be unreadable.
   const dayMs = 86400_000;
-  const startDay = new Date(period.startMs); startDay.setHours(0, 0, 0, 0);
-  const endDay = new Date(period.endMs); endDay.setHours(0, 0, 0, 0);
+  const trendStartMs = period.isAll ? Date.now() - 90 * dayMs : (period.startMs as number);
+  const trendEndMs = period.endMs;
+  const startDay = new Date(trendStartMs); startDay.setHours(0, 0, 0, 0);
+  const endDay = new Date(trendEndMs); endDay.setHours(0, 0, 0, 0);
   const days = Math.max(1, Math.round((endDay.getTime() - startDay.getTime()) / dayMs));
   const trend_daily: any[] = [];
   for (let d = 0; d < Math.min(days, 90); d++) {
@@ -403,7 +450,7 @@ export function buildInsights(input: {
   for (const a of activities) {
     if (!a.rep_name) continue;
     const t = new Date(a.created_at).getTime();
-    if (t < period.startMs || t >= period.endMs) continue;
+    if (!period.isAll && (t < (period.startMs as number) || t >= period.endMs)) continue;
     const r = repAgg[a.rep_name] ||= { actions: 0, leads: new Set(), converted: 0, lost: 0 };
     r.actions++;
     r.leads.add(a.lead_id);
@@ -420,13 +467,18 @@ export function buildInsights(input: {
   })).sort((a, b) => b.distinct_leads - a.distinct_leads);
 
   // --- Diagnostics block (for transparency)
+  const periodLabel = period.isAll
+    ? "All time"
+    : `${new Date(period.startMs as number).toLocaleString("en-IN")} → ${new Date(period.endMs).toLocaleString("en-IN")}`;
   const explanation = [
-    `Period: ${period.label} · ${new Date(period.startMs).toLocaleString("en-IN")} → ${new Date(period.endMs).toLocaleString("en-IN")}`,
+    `Period: ${period.label} · ${periodLabel}`,
     `Total leads in DB matching family + period: ${totalLeads} (of which ${totalScoreable} have scoring data)`,
     `Family marketing spend (sum of months overlapping period, prorated): ${totalSpend.toLocaleString("en-IN")}`,
     `Family CPA = spend / actual_leads = ${totalSpend.toLocaleString("en-IN")} / ${totalLeads} = ${familyCpa.toLocaleString("en-IN")}`,
     `Avg MQL = mean of scores for ${familyScoreableLeads.length} scoreable leads = ${avgMql}; median = ${medianMql}`,
-    `(Razorpay-only leads + leads ingested before Apr-26 webhook bug-fix may have stale first_seen and won't appear in recent periods.)`,
+    period.isAll
+      ? "(Showing all leads regardless of submission date — including those imported from CSV with no original date.)"
+      : "(CSV-imported leads with no original date use their import time as a fallback for date filtering.)",
   ];
 
   return {

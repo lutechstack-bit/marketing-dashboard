@@ -111,10 +111,11 @@ export default function InsightsClient({ insights }: { insights: InsightsPayload
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] uppercase tracking-wider text-fg-muted mr-1">Period</span>
           {[
+            { id: "all",   label: "All time" },
             { id: "today", label: "Today" },
-            { id: "7d", label: "7d" },
-            { id: "30d", label: "30d" },
-            { id: "mtd", label: "MTD" },
+            { id: "7d",    label: "7d" },
+            { id: "30d",   label: "30d" },
+            { id: "mtd",   label: "MTD" },
           ].map(p => (
             <button key={p.id} onClick={() => setParam("period", p.id)}
               className={`chip ${periodId === p.id ? "chip-active" : ""}`}>{p.label}</button>

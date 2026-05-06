@@ -12,7 +12,10 @@ export const maxDuration = 60;
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ [k: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
   const family = (params.family === "live" ? "live" : "forge") as Family;
-  const periodId = (params.period as string) || "30d";
+  // Default to "all time" so the founder sees the real DB totals on load.
+  // Most leads (CSV-imported) have null first_seen and would be excluded
+  // from any date-bounded filter — defaulting to 30d gave the wrong picture.
+  const periodId = (params.period as string) || "all";
   const customStart = params.start as string | undefined;
   const customEnd = params.end as string | undefined;
 

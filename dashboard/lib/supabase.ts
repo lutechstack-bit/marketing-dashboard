@@ -305,7 +305,9 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
  * For 6.4K leads this is ~10x faster than fetchLeads (1 query vs ~100).
  */
 export async function fetchLeadsLight(opts: { limit?: number } = {}): Promise<LeadRow[]> {
-  const targetLimit = opts.limit || 10000;
+  // Default 50k so /insights aggregations see the full table (41k leads
+  // currently). Was 10k which silently truncated 75% of leads.
+  const targetLimit = opts.limit || 50000;
   const leads: LeadRow[] = [];
   const PAGE = 1000;
   let offset = 0;
@@ -313,7 +315,9 @@ export async function fetchLeadsLight(opts: { limit?: number } = {}): Promise<Le
     const upper = Math.min(offset + PAGE - 1, offset + (targetLimit - leads.length) - 1);
     const { data, error } = await supabase
       .from("leads")
-      .select("id,email,phone,name,program,funnel_stage,score,score_breakdown,first_seen,last_activity,source_campaign_name,source_utm_source")
+      // created_at MUST be selected so inPeriod can fall back to it when
+      // first_seen is null (CSV-imported leads have no original date).
+      .select("id,email,phone,name,program,funnel_stage,score,score_breakdown,first_seen,last_activity,created_at,source_campaign_id,source_campaign_name,source_utm_source")
       .order("created_at", { ascending: false })
       .range(offset, upper);
     if (error) throw error;
