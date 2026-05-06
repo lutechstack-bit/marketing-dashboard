@@ -61,7 +61,8 @@ export type ProgramStats = {
 
 export type LeadsStats = {
   period: Period;
-  filters: { programs: string[]; includeLost: boolean };
+  // programs = null means "no program filter — includes leads with program=unknown"
+  filters: { programs: string[] | null; includeLost: boolean };
 
   // Headline counts
   total: number;
