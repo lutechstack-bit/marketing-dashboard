@@ -1,5 +1,6 @@
 import { loadAll } from "@/lib/data";
 import { fetchUnifiedKpis } from "@/lib/unified-kpis";
+import { fetchCampaignPerformance, fetchTopAds } from "@/lib/meta-ads";
 import { inr, fmtInt } from "@/lib/format";
 import Header from "@/components/Header";
 import KpiCard from "@/components/KpiCard";
@@ -23,9 +24,16 @@ export default async function HomePage() {
   // P&L, campaign performance, etc.) which is still authored in Sheets.
   let data: Awaited<ReturnType<typeof loadAll>> | null = null;
   let unifiedKpis: Awaited<ReturnType<typeof fetchUnifiedKpis>> = null;
+  let metaCampaigns: Awaited<ReturnType<typeof fetchCampaignPerformance>> = null;
+  let metaTopAds: Awaited<ReturnType<typeof fetchTopAds>> = null;
   let error: string | null = null;
   try {
-    [data, unifiedKpis] = await Promise.all([loadAll(), fetchUnifiedKpis()]);
+    [data, unifiedKpis, metaCampaigns, metaTopAds] = await Promise.all([
+      loadAll(),
+      fetchUnifiedKpis(),
+      fetchCampaignPerformance({ daysBack: 30 }).catch(() => null),
+      fetchTopAds({ daysBack: 30, limit: 12 }).catch(() => null),
+    ]);
   } catch (e: any) { error = e?.message || "Failed to load data"; }
 
   if (error || !data) {
@@ -105,12 +113,25 @@ export default async function HomePage() {
           <SpendTrendChart data={data.spendTrend} />
         </div>
 
-        {/* Marketing efficiency: Campaigns, then Top ads + CAC side by side */}
+        {/* Marketing efficiency: Campaigns, then Top ads + CAC side by side.
+            Source: Meta Ads API (live) when reachable, falls back to the
+            sheet-tracked rollup if Meta env / API misbehaves. */}
         <div className="mb-6">
-          <CampaignPerformance campaigns={data.campaigns} />
+          <CampaignPerformance campaigns={(metaCampaigns && metaCampaigns.length > 0
+            ? metaCampaigns.map(c => ({ ...c, program: c.program || "" }))
+            : data.campaigns) as any} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <TopAds ads={data.topAds} />
+          <TopAds ads={(metaTopAds && metaTopAds.length > 0
+            ? metaTopAds.map(a => ({
+                ad_id: a.ad_id, ad_name: a.ad_name,
+                campaign_name: a.campaign_name,
+                program: a.program || "",
+                spend: a.spend, impressions: a.impressions, clicks: a.clicks,
+                ctr: a.impressions > 0 ? Math.round((a.clicks / a.impressions) * 10000) / 100 : 0,
+                leads: a.leads, purchases: a.purchases,
+              }))
+            : data.topAds) as any} />
           <CacChart spendTrend={data.spendTrend} acquisitions={data.acquisition} />
         </div>
 

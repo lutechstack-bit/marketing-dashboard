@@ -128,6 +128,194 @@ async function fetchMonthlySpendImpl(
   };
 }
 
+// ---------------------------------------------------------------- campaign perf
+
+export type MetaCampaignRow = {
+  campaign_id: string;
+  campaign_name: string;
+  family: Family;
+  program: string | null;       // FFM/FW/FC/FAI/BFP/VE/L3C or null
+  spend: number;                // INR incl GST
+  impressions: number;
+  clicks: number;
+  ctr: number;                  // %
+  cpc: number;                  // INR
+  cpm: number;                  // INR per 1000 impressions
+  leads: number;                // from "lead" action
+  purchases: number;            // from "purchase" or "complete_registration"
+  active_days: number;          // 1 (we don't track active_days at campaign level — placeholder)
+};
+
+export type MetaAdRow = {
+  ad_id: string;
+  ad_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  family: Family;
+  program: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  purchases: number;
+};
+
+function actionsValue(actions: any[] | undefined, names: string[]): number {
+  if (!actions) return 0;
+  let total = 0;
+  for (const a of actions) {
+    if (names.includes(a.action_type)) total += parseFloat(a.value || "0");
+  }
+  return total;
+}
+
+/**
+ * Last-N-days campaign performance from Meta. Each row is one campaign,
+ * with spend (INR incl GST), impressions, clicks, CTR/CPC/CPM, leads, and
+ * purchases. Campaigns are classified into family/program via parser.ts so
+ * the dashboard can filter by Forge/Live cleanly.
+ *
+ * Excludes Masterclass / Workshop / Other by default.
+ *
+ * Cached 1h.
+ */
+export async function fetchCampaignPerformance(opts: {
+  daysBack?: number;
+  includeFamilies?: Family[];
+} = {}): Promise<MetaCampaignRow[] | null> {
+  const daysBack = opts.daysBack ?? 30;
+  const includeFamilies = opts.includeFamilies ?? ["Forge", "Live"];
+  const familiesKey = includeFamilies.slice().sort().join(",");
+  const cached = unstable_cache(
+    async () => {
+      try { return await fetchCampaignPerformanceImpl(daysBack, includeFamilies); }
+      catch (e: any) { console.error("[meta-ads] fetchCampaignPerformance failed:", e?.message); return null; }
+    },
+    ["meta-campaigns-v1", String(daysBack), familiesKey],
+    { revalidate: 3600, tags: ["meta-ads"] },
+  );
+  return cached();
+}
+
+async function fetchCampaignPerformanceImpl(daysBack: number, includeFamilies: Family[]): Promise<MetaCampaignRow[]> {
+  const token = process.env.META_ACCESS_TOKEN;
+  const account = process.env.META_AD_ACCOUNT_ID_API;
+  if (!token || !account) return [];
+
+  const tr = encodeURIComponent(JSON.stringify({ since: dateNDaysAgo(daysBack), until: today() }));
+  const fields = "spend,impressions,clicks,ctr,cpc,cpm,actions,campaign_id,campaign_name";
+  let nextUrl: string | null =
+    `${META_API}/${account}/insights?access_token=${token}&time_range=${tr}&level=campaign&fields=${fields}&limit=200`;
+  const rows: any[] = [];
+  while (nextUrl) {
+    const d: any = await metaGet(nextUrl);
+    rows.push(...(d.data || []));
+    nextUrl = d.paging?.next || null;
+  }
+
+  const include = new Set(includeFamilies);
+  const out: MetaCampaignRow[] = [];
+  for (const r of rows) {
+    const name = r.campaign_name || "";
+    const { family, program } = classifyCampaignFull(name);
+    if (!include.has(family)) continue;
+    const spendExcl = parseFloat(r.spend || "0");
+    out.push({
+      campaign_id: r.campaign_id,
+      campaign_name: name,
+      family, program: program === "AMBIGUOUS_FFM" ? "FFM" : (program || null),
+      spend: spendExcl * (1 + GST),
+      impressions: parseInt(r.impressions || "0"),
+      clicks: parseInt(r.clicks || "0"),
+      ctr: parseFloat(r.ctr || "0"),
+      cpc: parseFloat(r.cpc || "0"),
+      cpm: parseFloat(r.cpm || "0"),
+      leads: actionsValue(r.actions, ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"]),
+      purchases: actionsValue(r.actions, ["purchase", "offsite_conversion.fb_pixel_purchase", "complete_registration"]),
+      active_days: 0,
+    });
+  }
+  out.sort((a, b) => b.spend - a.spend);
+  return out;
+}
+
+// ---------------------------------------------------------------- top ads
+
+/**
+ * Last-N-days top ads (by spend) — ad-level granularity. Used to power the
+ * Top Ads tile on Overview. Cached 1h.
+ */
+export async function fetchTopAds(opts: {
+  daysBack?: number;
+  limit?: number;
+  includeFamilies?: Family[];
+} = {}): Promise<MetaAdRow[] | null> {
+  const daysBack = opts.daysBack ?? 30;
+  const limit = opts.limit ?? 10;
+  const includeFamilies = opts.includeFamilies ?? ["Forge", "Live"];
+  const familiesKey = includeFamilies.slice().sort().join(",");
+  const cached = unstable_cache(
+    async () => {
+      try { return await fetchTopAdsImpl(daysBack, limit, includeFamilies); }
+      catch (e: any) { console.error("[meta-ads] fetchTopAds failed:", e?.message); return null; }
+    },
+    ["meta-top-ads-v1", String(daysBack), String(limit), familiesKey],
+    { revalidate: 3600, tags: ["meta-ads"] },
+  );
+  return cached();
+}
+
+async function fetchTopAdsImpl(daysBack: number, limit: number, includeFamilies: Family[]): Promise<MetaAdRow[]> {
+  const token = process.env.META_ACCESS_TOKEN;
+  const account = process.env.META_AD_ACCOUNT_ID_API;
+  if (!token || !account) return [];
+
+  const tr = encodeURIComponent(JSON.stringify({ since: dateNDaysAgo(daysBack), until: today() }));
+  const fields = "spend,impressions,clicks,actions,ad_id,ad_name,campaign_id,campaign_name";
+  let nextUrl: string | null =
+    `${META_API}/${account}/insights?access_token=${token}&time_range=${tr}&level=ad&fields=${fields}&limit=200`;
+  const rows: any[] = [];
+  while (nextUrl) {
+    const d: any = await metaGet(nextUrl);
+    rows.push(...(d.data || []));
+    nextUrl = d.paging?.next || null;
+  }
+
+  const include = new Set(includeFamilies);
+  const out: MetaAdRow[] = [];
+  for (const r of rows) {
+    const cname = r.campaign_name || "";
+    const { family, program } = classifyCampaignFull(cname);
+    if (!include.has(family)) continue;
+    const spendExcl = parseFloat(r.spend || "0");
+    out.push({
+      ad_id: r.ad_id,
+      ad_name: r.ad_name || `(unnamed ${r.ad_id})`,
+      campaign_id: r.campaign_id,
+      campaign_name: cname,
+      family, program: program === "AMBIGUOUS_FFM" ? "FFM" : (program || null),
+      spend: spendExcl * (1 + GST),
+      impressions: parseInt(r.impressions || "0"),
+      clicks: parseInt(r.clicks || "0"),
+      leads: actionsValue(r.actions, ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"]),
+      purchases: actionsValue(r.actions, ["purchase", "offsite_conversion.fb_pixel_purchase", "complete_registration"]),
+    });
+  }
+  out.sort((a, b) => b.spend - a.spend);
+  return out.slice(0, limit);
+}
+
+// ---------------------------------------------------------------- helpers
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function dateNDaysAgo(n: number): string {
+  return new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------- legacy spend
+
 /**
  * Live monthly Meta Ads spend for {year, month} **filtered to the given
  * families**. Cached 1h. Returns null if env vars are missing or the API

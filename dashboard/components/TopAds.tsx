@@ -6,6 +6,9 @@ const PROG_TAG: Record<string, string> = {
   FW:  "text-sky-700 bg-sky-50 ring-1 ring-sky-200",
   FC:  "text-red-700 bg-red-50 ring-1 ring-red-200",
   FAI: "text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200",
+  BFP: "text-violet-700 bg-violet-50 ring-1 ring-violet-200",
+  VE:  "text-blue-700 bg-blue-50 ring-1 ring-blue-200",
+  L3C: "text-fuchsia-700 bg-fuchsia-50 ring-1 ring-fuchsia-200",
 };
 
 export default function TopAds({ ads }: { ads: AdPerf[] }) {
