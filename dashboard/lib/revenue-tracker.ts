@@ -251,9 +251,168 @@ async function fetchRevenueMetricsImpl(): Promise<RevenueMetrics> {
   };
 }
 
-/** Cached entry point — 1h TTL, tag "revenue-tracker" so it can be invalidated separately. */
+/** Cached entry point — 60s TTL for near-real-time refresh, tag
+ * "revenue-tracker" so the dashboard reflects manual sheet edits within
+ * a minute. Google Sheets API allows ~60 reads/min per service account
+ * which is more than enough at this cache window. */
 export const fetchRevenueMetrics = unstable_cache(
   fetchRevenueMetricsImpl,
-  ["revenue-tracker-v1"],
-  { revalidate: 3600, tags: ["revenue-tracker"] },
+  ["revenue-tracker-v2"],
+  { revalidate: 60, tags: ["revenue-tracker"] },
+);
+
+// ============================================================================
+// Per-program × per-month revenue from the Transaction Log
+// ============================================================================
+// The Transaction Log has columns: TXN ID, Date, Month, Student ID, Student Name,
+// Product, Payment Type, Payment Mode, Amount (₹), Razorpay ID, EMI #, Txn Status,
+// Remarks, TeleCRM Lead ID, Notes. We aggregate by (Product, Month, Payment Type)
+// for successful transactions only.
+
+export type ProgramMonthRevenue = {
+  program: string;          // FFM/FW/FC/FAI/BFP/VE/L3C
+  ym: string;               // "YYYY-MM"
+  year: number;
+  month: number;
+  app_fee_revenue_inr: number;     // Payment Type = "Application Fee"
+  confirmation_revenue_inr: number; // "Confirmation Fee"
+  balance_revenue_inr: number;     // "Balance" / "Full" / EMI installments
+  total_revenue_inr: number;
+  txn_count: number;
+};
+
+const MONTH_TOKEN_TO_NUM: Record<string, number> = {
+  Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+  Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
+};
+
+/** Parse "Mar-26" → { year: 2026, month: 3 } */
+function parseMonthToken(raw: any): { year: number; month: number; ym: string } | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  const m = s.match(/^([A-Za-z]{3})[-/\s]?(\d{2,4})$/);
+  if (!m) return null;
+  const monthNum = MONTH_TOKEN_TO_NUM[m[1].slice(0, 1).toUpperCase() + m[1].slice(1, 3).toLowerCase()];
+  if (!monthNum) return null;
+  let year = parseInt(m[2]);
+  if (year < 100) year += 2000;
+  return { year, month: monthNum, ym: `${year}-${String(monthNum).padStart(2, "0")}` };
+}
+
+async function fetchRevenueByProgramMonthImpl(): Promise<ProgramMonthRevenue[]> {
+  let tabs: Record<string, string[][]>;
+  try {
+    tabs = await readMultipleTabs(["Transaction Log"], REVENUE_SHEET_ID);
+  } catch (e: any) {
+    return [];
+  }
+  const tl = tabs["Transaction Log"] || [];
+  if (tl.length < 2) return [];
+
+  const header = (tl[0] || []).map(h => String(h).toLowerCase().trim());
+  const colMonth   = header.findIndex(h => /^month$/.test(h));
+  const colProduct = header.findIndex(h => /^\s*product\s*$/.test(h));
+  const colPayType = header.findIndex(h => /payment\s*type/.test(h));
+  const colAmount  = header.findIndex(h => /amount/.test(h));
+  const colStatus  = header.findIndex(h => /txn\s*status|status/.test(h));
+
+  if (colMonth < 0 || colProduct < 0 || colPayType < 0 || colAmount < 0 || colStatus < 0) {
+    return [];
+  }
+
+  // Aggregate by (program, ym)
+  const cells = new Map<string, ProgramMonthRevenue>();
+  const VALID_PROGS = new Set(["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"]);
+  for (let i = 1; i < tl.length; i++) {
+    const row = tl[i] || [];
+    const status = String(row[colStatus] || "").toLowerCase();
+    if (!/success/i.test(status)) continue;       // skip failed / pending
+    const product = String(row[colProduct] || "").trim().toUpperCase();
+    if (!VALID_PROGS.has(product)) continue;
+    const monthInfo = parseMonthToken(row[colMonth]);
+    if (!monthInfo) continue;
+    const amt = num(row[colAmount]);
+    if (!amt) continue;
+    const ptype = String(row[colPayType] || "").toLowerCase();
+    const key = `${product}|${monthInfo.ym}`;
+    if (!cells.has(key)) {
+      cells.set(key, {
+        program: product, ym: monthInfo.ym, year: monthInfo.year, month: monthInfo.month,
+        app_fee_revenue_inr: 0, confirmation_revenue_inr: 0, balance_revenue_inr: 0,
+        total_revenue_inr: 0, txn_count: 0,
+      });
+    }
+    const c = cells.get(key)!;
+    c.txn_count++;
+    if (/application\s*fee|app\s*fee/i.test(ptype)) {
+      c.app_fee_revenue_inr += amt;
+    } else if (/confirmation/i.test(ptype)) {
+      c.confirmation_revenue_inr += amt;
+    } else {
+      c.balance_revenue_inr += amt;
+    }
+    c.total_revenue_inr += amt;
+  }
+  return Array.from(cells.values()).sort((a, b) =>
+    a.program.localeCompare(b.program) || a.ym.localeCompare(b.ym)
+  );
+}
+
+/** Cached 60s — same near-real-time policy as fetchRevenueMetrics. */
+export const fetchRevenueByProgramMonth = unstable_cache(
+  fetchRevenueByProgramMonthImpl,
+  ["revenue-by-program-month-v1"],
+  { revalidate: 60, tags: ["revenue-tracker"] },
+);
+
+// ============================================================================
+// Dashboard tab — all-time headline numbers
+// ============================================================================
+
+export type RevenueDashboard = {
+  total_students: number;
+  active_students: number;
+  drop_offs: number;
+  total_booked_inr: number;
+  cash_collected_inr: number;
+  collection_pct: number;
+  ok: boolean;
+  fetched_at: string;
+};
+
+async function fetchRevenueDashboardImpl(): Promise<RevenueDashboard> {
+  const empty: RevenueDashboard = {
+    total_students: 0, active_students: 0, drop_offs: 0,
+    total_booked_inr: 0, cash_collected_inr: 0, collection_pct: 0,
+    ok: false, fetched_at: new Date().toISOString(),
+  };
+  let tabs: Record<string, string[][]>;
+  try {
+    tabs = await readMultipleTabs(["Dashboard"], REVENUE_SHEET_ID);
+  } catch (e) { return empty; }
+  const rows = tabs["Dashboard"] || [];
+  if (rows.length < 3) return empty;
+
+  // Layout (per probe): row 1 has labels, row 2 has values
+  // Total Students | Active Students | Drop-Offs | Total Booked | Cash Collected | Collection %
+  const labels = (rows[1] || []).map(c => String(c || "").trim());
+  const values = rows[2] || [];
+
+  const findIdx = (re: RegExp) => labels.findIndex(l => re.test(l));
+  return {
+    total_students:    num(values[findIdx(/total\s*students/i)]),
+    active_students:   num(values[findIdx(/active\s*students/i)]),
+    drop_offs:         num(values[findIdx(/drop[\s-]?offs?/i)]),
+    total_booked_inr:  num(values[findIdx(/total\s*booked/i)]),
+    cash_collected_inr: num(values[findIdx(/cash\s*collected/i)]),
+    collection_pct:    pct(values[findIdx(/collection\s*%/i)]),
+    ok: true,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+export const fetchRevenueDashboard = unstable_cache(
+  fetchRevenueDashboardImpl,
+  ["revenue-dashboard-v1"],
+  { revalidate: 60, tags: ["revenue-tracker"] },
 );

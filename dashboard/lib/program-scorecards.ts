@@ -23,6 +23,7 @@
 import { unstable_cache } from "next/cache";
 import { supabase } from "./supabase";
 import { fetchMonthlySpendByProgram } from "./meta-ads";
+import { fetchRevenueByProgramMonth } from "./revenue-tracker";
 import { PRODUCTS } from "./products";
 
 export type ProgramMonthScorecard = {
@@ -133,52 +134,21 @@ async function fetchProgramScorecardsImpl(opts: {
     if (CONVERTED_STAGES.has(l.funnel_stage))  bump(l.program, ym, "converts",      1);
   }
 
-  // ---- Payments revenue — captured payments tagged with program ----
-  // 86% of historical payments have program=NULL (Razorpay webhook can't
-  // infer program from amount alone for shared price points). Fall back to
-  // the linked lead's program when the payment row's program is null.
-  const { data: pays } = await supabase
-    .from("payments")
-    .select("amount_inr,program,payment_type,paid_at,status,lead_id")
-    .eq("status", "captured")
-    .gte("paid_at", sinceIso)
-    .lt("paid_at", untilIso);
-
-  // Resolve program via lead.program for null-program payments
-  const nullProgramPayLeadIds = Array.from(new Set(
-    (pays || []).filter((p: any) => !p.program && p.lead_id).map((p: any) => p.lead_id)
-  ));
-  const leadProgramById = new Map<string, string>();
-  if (nullProgramPayLeadIds.length > 0) {
-    const lpChunks: string[][] = [];
-    for (let i = 0; i < nullProgramPayLeadIds.length; i += 200) lpChunks.push(nullProgramPayLeadIds.slice(i, i + 200));
-    const lpResults = await Promise.all(
-      lpChunks.map(c => supabase.from("leads").select("id,program").in("id", c))
-    );
-    for (const r of lpResults) {
-      for (const row of (r.data || []) as any[]) {
-        if (row.program && codes.includes(row.program)) leadProgramById.set(row.id, row.program);
-      }
-    }
-  }
-
-  for (const p of (pays || []) as any[]) {
-    let prog = p.program;
-    if (!prog || !codes.includes(prog)) {
-      if (p.lead_id) prog = leadProgramById.get(p.lead_id) || null;
-    }
-    if (!prog || !codes.includes(prog)) continue;
-    const ym = ymOf(p.paid_at);
-    if (!ym) continue;
-    if (!cells.has(`${prog}|${ym}`)) continue;
-    const amt = Number(p.amount_inr) || 0;
-    if (p.payment_type === "app_fee") {
-      bump(prog, ym, "app_fee_revenue_inr", amt);
-    } else if (p.payment_type === "full") {
-      bump(prog, ym, "balance_revenue_inr", amt);
-    } else if (p.payment_type === "confirmation") {
-      // Confirmation = part of total booked revenue, count toward balance
-      bump(prog, ym, "balance_revenue_inr", amt);
+  // ---- Revenue — Revenue Tracker sheet (source of truth) ----
+  // The Revenue Tracker's "Transaction Log" tab has every transaction
+  // tagged with Product + Month + Payment Type + Status. We aggregate
+  // there instead of trying to reconstruct from Razorpay payments (which
+  // had ~86% NULL-program orphans). This is the founder-maintained ground
+  // truth for revenue, refreshed every 60s so it tracks real-time.
+  const revenueRows = await fetchRevenueByProgramMonth().catch(() => null);
+  if (revenueRows) {
+    for (const r of revenueRows) {
+      if (!cells.has(`${r.program}|${r.ym}`)) continue;
+      bump(r.program, r.ym, "app_fee_revenue_inr", r.app_fee_revenue_inr);
+      // Confirmation + Balance both count as "balance" revenue (anything
+      // beyond app fee). They're separated in the sheet but combined in
+      // the per-program scorecard.
+      bump(r.program, r.ym, "balance_revenue_inr", r.confirmation_revenue_inr + r.balance_revenue_inr);
     }
   }
 
@@ -208,8 +178,10 @@ async function fetchProgramScorecardsImpl(opts: {
   return out;
 }
 
+// Cache 5 min — short enough to reflect sheet edits within a few minutes,
+// long enough to avoid hammering Sheets/Meta APIs.
 export const fetchProgramScorecards = unstable_cache(
   async (monthsBack: number = 6) => fetchProgramScorecardsImpl({ monthsBack }),
-  ["program-scorecards-v2"],
-  { revalidate: 1800, tags: ["leads", "meta-ads"] },
+  ["program-scorecards-v3"],
+  { revalidate: 300, tags: ["leads", "meta-ads", "revenue-tracker"] },
 );
