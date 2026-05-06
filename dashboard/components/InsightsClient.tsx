@@ -84,8 +84,8 @@ export default function InsightsClient({ insights }: { insights: InsightsPayload
 
       {/* Diagnostics block — toggleable */}
       {showDiagnostics && (
-        <div className="surface-card p-4 mb-5 bg-amber-50/40 border-l-4 border-l-amber-400">
-          <div className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-2 inline-flex items-center gap-1.5">
+        <div className="surface-card p-4 mb-5 bg-amber-500/[0.06] border-l-4 border-l-amber-400">
+          <div className="text-xs font-semibold uppercase tracking-wider text-amber-500 mb-2 inline-flex items-center gap-1.5">
             <AlertCircle className="w-3.5 h-3.5" />
             Diagnostics — raw inputs &amp; formulas
           </div>
@@ -236,18 +236,24 @@ function HeroStrip({ hero }: { hero: InsightsPayload["hero"] }) {
 }
 
 function HeroTile({ label, value, sub, delta, icon, accent, big, invert }: any) {
+  // Theme-aware accent tints: opacity overlays on top of the surface so dark
+  // mode stays dark with a coloured wash, light mode stays light with a tint.
   const accentMap: Record<string, string> = {
-    amber: "from-amber-50 to-white border-amber-200",
-    indigo: "from-indigo-50 to-white border-indigo-200",
-    emerald: "from-emerald-50 to-white border-emerald-200",
-    rose: "from-rose-50 to-white border-rose-200",
-    cyan: "from-cyan-50 to-white border-cyan-200",
+    amber:   "bg-amber-500/[0.07] border-amber-500/30",
+    indigo:  "bg-indigo-500/[0.07] border-indigo-500/30",
+    emerald: "bg-emerald-500/[0.07] border-emerald-500/30",
+    rose:    "bg-rose-500/[0.07] border-rose-500/30",
+    cyan:    "bg-cyan-500/[0.07] border-cyan-500/30",
   };
   const iconColor: Record<string, string> = {
-    amber: "text-amber-600", indigo: "text-indigo-600", emerald: "text-emerald-600", rose: "text-rose-600", cyan: "text-cyan-600",
+    amber:   "text-amber-500",
+    indigo:  "text-indigo-400",
+    emerald: "text-emerald-500",
+    rose:    "text-rose-400",
+    cyan:    "text-cyan-400",
   };
   return (
-    <div className={`relative rounded-xl border bg-gradient-to-br ${accentMap[accent]} p-4 transition-shadow hover:shadow-card-hover`}>
+    <div className={`surface-card relative rounded-xl border ${accentMap[accent]} p-4 transition-shadow hover:shadow-card-hover`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-fg-muted uppercase tracking-wider">{label}</span>
         <span className={iconColor[accent]}>{icon}</span>
@@ -256,7 +262,7 @@ function HeroTile({ label, value, sub, delta, icon, accent, big, invert }: any) 
       <div className="flex items-baseline justify-between mt-1.5 gap-2">
         <span className="text-[11px] text-fg-muted">{sub || ""}</span>
         {delta !== undefined && delta !== 0 && (
-          <span className={`text-[11px] font-semibold inline-flex items-center gap-0.5 ${(invert ? delta < 0 : delta > 0) ? "text-emerald-600" : "text-rose-600"}`}>
+          <span className={`text-[11px] font-semibold inline-flex items-center gap-0.5 ${(invert ? delta < 0 : delta > 0) ? "text-emerald-500" : "text-rose-500"}`}>
             {delta > 0 ? <TrendingUp className="w-3 h-3"/> : <TrendingDown className="w-3 h-3"/>}
             {Math.abs(delta).toFixed(1)}%
           </span>
@@ -287,7 +293,7 @@ function ProductCard({ prod, isOpen, onClick }: { prod: ProductInsight; isOpen: 
         </div>
         <div className="ml-auto text-right">
           <div className="text-[10px] uppercase tracking-wider text-fg-muted">Avg MQL</div>
-          <div className={`text-2xl font-bold tabular-nums leading-none ${prod.avg_mql >= 50 ? "text-emerald-600" : prod.avg_mql >= 30 ? "text-cyan-700" : "text-fg-text"}`}>{prod.avg_mql}</div>
+          <div className={`text-2xl font-bold tabular-nums leading-none ${prod.avg_mql >= 50 ? "text-emerald-500" : prod.avg_mql >= 30 ? "text-cyan-400" : "text-fg-text"}`}>{prod.avg_mql}</div>
         </div>
       </div>
       <div className="text-xs text-fg-muted mb-3 flex items-center gap-2 flex-wrap">
@@ -464,7 +470,7 @@ function RepTable({ reps }: { reps: InsightsPayload["reps"] }) {
               <td className="py-3 px-4 text-right tabular-nums text-emerald-600 font-semibold">{r.converted}</td>
               <td className="py-3 px-4 text-right tabular-nums text-rose-600">{r.lost}</td>
               <td className="py-3 px-4 text-right tabular-nums">
-                <span className={`font-semibold ${r.convert_rate >= 10 ? "text-emerald-600" : r.convert_rate >= 5 ? "text-cyan-700" : "text-fg-text"}`}>{r.convert_rate}%</span>
+                <span className={`font-semibold ${r.convert_rate >= 10 ? "text-emerald-500" : r.convert_rate >= 5 ? "text-cyan-400" : "text-fg-text"}`}>{r.convert_rate}%</span>
               </td>
             </tr>
           ))}

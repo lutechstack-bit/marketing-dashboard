@@ -398,7 +398,7 @@ function FocusBanner({ productName, newLastHour, new24h, oldestHotHours, totalAb
                     : oldestHotHours < 24 ? `${Math.round(oldestHotHours)}h`
                     : `${Math.round(oldestHotHours / 24)}d`;
   return (
-    <div className="surface-card mt-3 mb-4 p-4 bg-gradient-to-br from-amber-50/60 via-white to-yellow-50/40 border-l-4 border-l-yellow-500">
+    <div className="surface-card mt-3 mb-4 p-4 bg-amber-500/[0.06] border-l-4 border-l-yellow-500">
       <div className="flex items-start gap-3">
         <Sparkles className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
