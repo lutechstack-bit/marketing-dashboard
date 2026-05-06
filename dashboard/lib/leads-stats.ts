@@ -122,9 +122,19 @@ function tierOf(score: number): keyof LeadsStats["by_tier"] {
   return "junk";
 }
 
-function resolvePrograms(opts: LeadsStatsOpts): string[] {
+/**
+ * Returns either an array of program codes to filter by, or null meaning
+ * "no program filter — include all rows even ones with program=unknown / null".
+ *
+ * When family is explicit (forge or live), we filter to that family's codes.
+ * When family is "all" or unset and no programs override is given, we return
+ * null so the caller skips the .in("program",...) clause and includes the
+ * ~300 unattributed-program leads (real paying customers via Razorpay that
+ * didn't have a Tally form first).
+ */
+function resolvePrograms(opts: LeadsStatsOpts): string[] | null {
   if (opts.programs?.length) return opts.programs.slice().sort();
-  if (opts.family === "all" || !opts.family) return PRODUCTS.map(p => p.code).sort();
+  if (opts.family === "all" || !opts.family) return null;
   return PRODUCTS_BY_FAMILY[opts.family].map(p => p.code).sort();
 }
 
@@ -151,39 +161,41 @@ export async function fetchLeadsStats(opts: LeadsStatsOpts = {}): Promise<LeadsS
 
   return unstable_cache(
     () => computeLeadsStats({ programs, includeLost, period }),
-    ["leads-stats-v1", cacheKey],
+    ["leads-stats-v2", cacheKey],
     { revalidate: 60, tags: ["leads"] },
   )();
 }
 
 async function computeLeadsStats(args: {
-  programs: string[];
+  programs: string[] | null;
   includeLost: boolean;
   period: Period;
 }): Promise<LeadsStats> {
   const { programs, includeLost, period } = args;
 
-  // Pull leads in program scope. Get the count first, then fire all pages in
-  // PARALLEL — sequential pagination on 42k rows blew through Vercel's 10s
-  // timeout. Parallel pagination finishes in ~2 seconds.
+  // Pull leads in program scope. programs=null means "all programs including
+  // unknown/null" (those are real paying customers via Razorpay without a
+  // prior Tally form — see resolvePrograms doc).
+  // Get the count first, then fire all pages in PARALLEL — sequential
+  // pagination on 42k rows blew through Vercel's 10s function timeout.
   const PAGE = 1000;
-  const countRes = await supabase
-    .from("leads")
-    .select("id", { count: "exact", head: true })
-    .in("program", programs);
+  let countQ = supabase.from("leads").select("id", { count: "exact", head: true });
+  if (programs) countQ = countQ.in("program", programs);
+  const countRes = await countQ;
   if (countRes.error) throw new Error(`leads-stats count: ${countRes.error.message}`);
   const totalCount = countRes.count || 0;
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE));
 
   const pageResults = await Promise.all(
-    Array.from({ length: pageCount }, (_, i) =>
-      supabase
+    Array.from({ length: pageCount }, (_, i) => {
+      let q = supabase
         .from("leads")
         .select("id,program,funnel_stage,score,score_breakdown,first_seen,created_at")
-        .in("program", programs)
         .order("created_at", { ascending: false })
-        .range(i * PAGE, i * PAGE + PAGE - 1)
-    )
+        .range(i * PAGE, i * PAGE + PAGE - 1);
+      if (programs) q = q.in("program", programs);
+      return q;
+    })
   );
   const allLeads: any[] = [];
   for (const r of pageResults) {
