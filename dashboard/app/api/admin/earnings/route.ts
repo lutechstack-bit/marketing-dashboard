@@ -141,5 +141,153 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, earning, stage_updated: !!wantStage });
   }
 
+  // Edit an existing manual earning. Only manual earnings (those whose
+  // trigger_slot_payment_id starts with 'manual_') are editable — webhook-
+  // generated earnings stay immutable. Editable fields:
+  //   amount_inr · rep_id · product_code · edition_label · notes
+  //   locked_at (conversion date) · status (locked/unlocked/approved)
+  if (action === "update_earning") {
+    const { earning_id, amount_inr, rep_id, product_code, edition_label,
+            notes, locked_at, status } = body || {};
+    if (!earning_id) return NextResponse.json({ error: "earning_id required" }, { status: 400 });
+
+    // Pull the existing earning and confirm it's manual
+    const { data: existing, error: fetchErr } = await supabase
+      .from("incentive_earnings")
+      .select("*")
+      .eq("id", earning_id)
+      .maybeSingle();
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: fetchErr?.message || "earning not found" }, { status: 404 });
+    }
+    if (!existing.trigger_slot_payment_id || !String(existing.trigger_slot_payment_id).startsWith("manual_")) {
+      return NextResponse.json({ error: "only manual earnings are editable" }, { status: 403 });
+    }
+    if (existing.status === "paid_out") {
+      return NextResponse.json({ error: "cannot edit a paid-out earning" }, { status: 403 });
+    }
+
+    const updates: Record<string, any> = {};
+    if (amount_inr !== undefined) {
+      const amt = Number(amount_inr);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        return NextResponse.json({ error: "amount_inr must be > 0" }, { status: 400 });
+      }
+      updates.amount_inr = amt;
+    }
+    if (rep_id !== undefined && rep_id !== null && rep_id !== "")    updates.rep_id = rep_id;
+    if (product_code !== undefined && product_code !== null && product_code !== "") updates.product_code = product_code;
+    if (edition_label !== undefined) updates.edition_label = edition_label || null;
+    if (notes !== undefined)         updates.notes = notes || null;
+    if (locked_at !== undefined && locked_at !== null && locked_at !== "") {
+      const parsed = new Date(locked_at);
+      if (isNaN(parsed.getTime())) return NextResponse.json({ error: "locked_at invalid" }, { status: 400 });
+      if (parsed.getTime() > Date.now() + 86400_000) {
+        return NextResponse.json({ error: "locked_at can't be in the future" }, { status: 400 });
+      }
+      updates.locked_at = parsed.toISOString();
+    }
+    // Status transitions — controlled. Setting unlocked/approved also sets timestamps.
+    if (status !== undefined) {
+      const validStatuses = ["locked", "unlocked", "approved", "reverted"];
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json({ error: `status must be one of ${validStatuses.join(", ")}` }, { status: 400 });
+      }
+      updates.status = status;
+      const nowIso = new Date().toISOString();
+      if (status === "unlocked" && !existing.unlocked_at) updates.unlocked_at = nowIso;
+      if (status === "approved") {
+        if (!existing.unlocked_at) updates.unlocked_at = nowIso;
+        if (!existing.approved_at) {
+          updates.approved_at = nowIso;
+          updates.approved_by = adminId;
+        }
+      }
+      if (status === "reverted") updates.reverted_at = nowIso;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "no editable fields provided" }, { status: 400 });
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from("incentive_earnings")
+      .update(updates)
+      .eq("id", earning_id)
+      .select("*")
+      .maybeSingle();
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+
+    // Audit log
+    await supabase.from("incentive_audit_log").insert({
+      earning_id,
+      actor_id: adminId,
+      event_type: "manual_edit",
+      from_status: existing.status,
+      to_status: updates.status || existing.status,
+      reason: `manual edit: ${Object.keys(updates).join(", ")}`,
+    }).then(() => {}, () => {}); // best-effort
+
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("leads");
+    } catch {}
+
+    return NextResponse.json({ ok: true, earning: updated, changed_fields: Object.keys(updates) });
+  }
+
+  // Delete a manual earning entirely. Same restrictions as update_earning.
+  if (action === "delete_earning") {
+    const { earning_id, reason } = body || {};
+    if (!earning_id) return NextResponse.json({ error: "earning_id required" }, { status: 400 });
+
+    const { data: existing } = await supabase
+      .from("incentive_earnings")
+      .select("*")
+      .eq("id", earning_id)
+      .maybeSingle();
+    if (!existing) return NextResponse.json({ error: "earning not found" }, { status: 404 });
+    if (!existing.trigger_slot_payment_id || !String(existing.trigger_slot_payment_id).startsWith("manual_")) {
+      return NextResponse.json({ error: "only manual earnings can be deleted" }, { status: 403 });
+    }
+    if (existing.status === "paid_out") {
+      return NextResponse.json({ error: "cannot delete a paid-out earning" }, { status: 403 });
+    }
+
+    // Soft-delete via revert (preserves the row for audit). Hard-delete is
+    // available if the admin really wants it via ?hard=true.
+    const url = new URL(req.url);
+    const hard = url.searchParams.get("hard") === "true";
+    if (hard) {
+      const { error: delErr } = await supabase.from("incentive_earnings").delete().eq("id", earning_id);
+      if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    } else {
+      const { error: revErr } = await supabase.from("incentive_earnings").update({
+        status: "reverted",
+        reverted_at: new Date().toISOString(),
+        notes: existing.notes
+          ? `${existing.notes} · reverted: ${reason || "manual revert"}`
+          : `Reverted: ${reason || "manual revert"}`,
+      }).eq("id", earning_id);
+      if (revErr) return NextResponse.json({ error: revErr.message }, { status: 500 });
+    }
+
+    await supabase.from("incentive_audit_log").insert({
+      earning_id,
+      actor_id: adminId,
+      event_type: hard ? "manual_hard_delete" : "manual_revert",
+      from_status: existing.status,
+      to_status: hard ? "(deleted)" : "reverted",
+      reason: reason || "manual delete",
+    }).then(() => {}, () => {});
+
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("leads");
+    } catch {}
+
+    return NextResponse.json({ ok: true, hard_deleted: hard });
+  }
+
   return NextResponse.json({ error: `unknown action '${action}'` }, { status: 400 });
 }

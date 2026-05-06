@@ -2,6 +2,7 @@ import { fetchLeads, supabase } from "@/lib/supabase";
 import { fetchLeadsStats } from "@/lib/leads-stats";
 import Header from "@/components/Header";
 import LeadsClient from "@/components/LeadsClient";
+import RefreshButton from "@/components/RefreshButton";
 import { Flame, TrendingUp, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +40,11 @@ export default async function LeadsPage() {
               {stats.total.toLocaleString("en-IN")} leads · {stats.scoreable.toLocaleString("en-IN")} scoreable · click any name to open the full timeline
             </p>
           </div>
-          <div className="flex gap-2.5">
+          <div className="flex gap-2.5 items-center">
             <KpiPill label="Need to book interview" value={stats.by_stage["accepted"] || 0} icon={<Flame className="w-3.5 h-3.5" />} accent="amber" />
             <KpiPill label="Hot 75+"  value={stats.hot}       icon={<TrendingUp className="w-3.5 h-3.5" />} accent="emerald" />
             <KpiPill label="Total"    value={stats.total}     icon={<Users className="w-3.5 h-3.5" />} accent="slate" />
+            <RefreshButton />
           </div>
         </div>
 

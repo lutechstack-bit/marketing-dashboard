@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Lock, Unlock, CheckCheck, RotateCcw, ChevronRight, AlertCircle, Loader2, UserPlus, Search, X } from "lucide-react";
+import { ShieldCheck, Lock, Unlock, CheckCheck, RotateCcw, ChevronRight, AlertCircle, Loader2, UserPlus, Search, X, Pencil, Trash2 } from "lucide-react";
 import { inr, fmtDate } from "@/lib/format";
 
 type Earning = {
@@ -20,7 +20,12 @@ type Earning = {
   paid_out_at: string | null;
   reverted_at: string | null;
   reverted_reason: string | null;
+  notes?: string | null;
+  trigger_slot_payment_id?: string | null;  // 'manual_*' for manually-attributed earnings
 };
+
+const isManualEarning = (e: Earning) =>
+  !!e.trigger_slot_payment_id && String(e.trigger_slot_payment_id).startsWith("manual_");
 
 type Lead = { id: string; name: string | null; email: string | null; phone: string | null; program: string | null; funnel_stage: string | null };
 type Rep = { id: string; full_name: string | null; email: string; role: string };
@@ -53,6 +58,7 @@ export default function PayoutsClient({ earnings, repsById, leadsById, reps = []
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null); // earning id being acted on, or 'batch'
   const [attribOpen, setAttribOpen] = useState(false);
+  const [editing, setEditing] = useState<Earning | null>(null);
 
   const filtered = useMemo(() => {
     if (filter === "all") return earnings;
@@ -136,6 +142,17 @@ export default function PayoutsClient({ earnings, repsById, leadsById, reps = []
           assignments={assignments}
           onClose={() => setAttribOpen(false)}
           onCreated={() => { setAttribOpen(false); router.refresh(); }}
+        />
+      )}
+
+      {editing && (
+        <EditEarningModal
+          earning={editing}
+          reps={reps}
+          repName={editing.rep_id ? (repsById[editing.rep_id]?.full_name || repsById[editing.rep_id]?.email || "—") : "—"}
+          leadName={editing.lead_id ? (leadsById[editing.lead_id]?.name || leadsById[editing.lead_id]?.email || "—") : "—"}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); router.refresh(); }}
         />
       )}
 
@@ -251,6 +268,15 @@ export default function PayoutsClient({ earnings, repsById, leadsById, reps = []
                     )}
                     {e.status === "reverted" && e.reverted_reason && (
                       <span className="text-[10px] text-rose-700" title={e.reverted_reason}>{e.reverted_reason.slice(0, 30)}…</span>
+                    )}
+                    {isManualEarning(e) && e.status !== "paid_out" && (
+                      <button
+                        onClick={() => setEditing(e)}
+                        className="ml-2 inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-fg-border text-fg-text hover:bg-fg-surface"
+                        title="Edit manual attribution"
+                      >
+                        <Pencil className="w-3 h-3" />Edit
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -635,6 +661,169 @@ function ManualAttributeModal({ reps, assignments, onClose, onCreated }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Edit Earning Modal
+
+function EditEarningModal({ earning, reps, repName, leadName, onClose, onSaved }: {
+  earning: Earning;
+  reps: Rep[];
+  repName: string;
+  leadName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState<string>(String(earning.amount_inr));
+  const [repId, setRepId] = useState<string>(earning.rep_id || "");
+  const [productCode, setProductCode] = useState<string>(earning.product_code || "");
+  const [editionLabel, setEditionLabel] = useState<string>(earning.edition_label || "");
+  const [lockedAt, setLockedAt] = useState<string>(earning.locked_at ? earning.locked_at.slice(0, 10) : "");
+  const [status, setStatus] = useState<Earning["status"]>(earning.status);
+  const [notes, setNotes] = useState<string>(earning.notes || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const PRODUCT_CODES = ["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"];
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      const amt = parseFloat(amount);
+      if (!Number.isFinite(amt) || amt <= 0) throw new Error("Amount must be a positive number");
+      const body: any = {
+        action: "update_earning",
+        earning_id: earning.id,
+        amount_inr: amt,
+        rep_id: repId || undefined,
+        product_code: productCode || undefined,
+        edition_label: editionLabel.trim() || undefined,
+        notes: notes.trim() || undefined,
+        locked_at: lockedAt || undefined,
+        status,
+      };
+      const r = await fetch("/api/admin/earnings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Update failed");
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally { setBusy(false); }
+  }
+
+  async function softDelete() {
+    if (!confirm("Revert this earning? It stays in the audit log but stops affecting payouts.")) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch("/api/admin/earnings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_earning", earning_id: earning.id, reason: "manual revert from edit modal" }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Delete failed");
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="surface-card max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between p-5 border-b border-fg-border sticky top-0 bg-fg-card z-10">
+          <div>
+            <h3 className="font-semibold text-fg-text">Edit manual attribution</h3>
+            <p className="text-xs text-fg-muted mt-0.5">{leadName} · attributed to {repName}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-fg-surface" disabled={busy}>
+            <X className="w-4 h-4 text-fg-muted" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Amount (₹)">
+              <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card" />
+            </Field>
+            <Field label="Conversion date">
+              <input type="date" value={lockedAt} max={today} onChange={e => setLockedAt(e.target.value)}
+                className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card" />
+            </Field>
+          </div>
+          <Field label="Status">
+            <select value={status} onChange={e => setStatus(e.target.value as Earning["status"])}
+              className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card">
+              <option value="locked">🔒 Locked (app fee paid, not balance yet)</option>
+              <option value="unlocked">✅ Unlocked (balance paid, awaiting approval)</option>
+              <option value="approved">✓ Approved (admin approved, awaiting payout)</option>
+              <option value="reverted">❌ Reverted</option>
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Rep">
+              <select value={repId} onChange={e => setRepId(e.target.value)}
+                className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card">
+                <option value="">— pick —</option>
+                {reps.map(r => <option key={r.id} value={r.id}>{r.full_name || r.email}</option>)}
+              </select>
+            </Field>
+            <Field label="Product">
+              <select value={productCode} onChange={e => setProductCode(e.target.value)}
+                className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card">
+                {PRODUCT_CODES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Edition (optional)">
+            <input value={editionLabel} onChange={e => setEditionLabel(e.target.value)}
+              placeholder="e.g. Bali, Goa, E5"
+              className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card" />
+          </Field>
+          <Field label="Notes">
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card" />
+          </Field>
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+        <div className="p-5 border-t border-fg-border bg-fg-surface/40 flex items-center justify-between gap-2 sticky bottom-0">
+          <button
+            onClick={softDelete}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />Revert
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} disabled={busy} className="px-3 py-2 text-xs text-fg-muted hover:text-forge-black">Cancel</button>
+            <button
+              onClick={save}
+              disabled={busy}
+              className="btn-forge"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />}
+              Save changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] text-fg-muted uppercase tracking-[0.12em] mb-1.5 font-semibold">{label}</label>
+      {children}
     </div>
   );
 }

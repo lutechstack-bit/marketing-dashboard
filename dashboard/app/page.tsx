@@ -5,6 +5,7 @@ import { fetchRevenueMetrics } from "@/lib/revenue-tracker";
 import { fetchProgramScorecards } from "@/lib/program-scorecards";
 import RevenueTrackerStrip from "@/components/RevenueTrackerStrip";
 import LiveProgramScorecards from "@/components/LiveProgramScorecards";
+import RefreshButton from "@/components/RefreshButton";
 import { inr, fmtInt } from "@/lib/format";
 import Header from "@/components/Header";
 import KpiCard from "@/components/KpiCard";
@@ -66,11 +67,14 @@ export default async function HomePage() {
       <Header lastSync={new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} />
       <main className="max-w-[1500px] mx-auto px-6 py-8">
         {/* Page title */}
-        <div className="mb-6">
-          <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black">
-            Founders <span className="brand-underline">overview</span>
-          </h1>
-          <p className="text-sm text-fg-muted mt-2">{latestLabel ? `Showing ${latestLabel}` : "All-time view"} · click a tab below to drill into a program family</p>
+        <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="font-display text-4xl font-extrabold italic tracking-tight text-forge-black">
+              Founders <span className="brand-underline">overview</span>
+            </h1>
+            <p className="text-sm text-fg-muted mt-2">{latestLabel ? `Showing ${latestLabel}` : "All-time view"} · click a tab below to drill into a program family</p>
+          </div>
+          <RefreshButton />
         </div>
 
         {/* Family tabs */}

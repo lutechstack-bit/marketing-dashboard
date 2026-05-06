@@ -3,8 +3,11 @@ import { fetchLeadsLight, supabase } from "@/lib/supabase";
 import { loadAll } from "@/lib/data";
 import { buildInsights } from "@/lib/insights-server";
 import { fetchRevenueMetrics } from "@/lib/revenue-tracker";
+import { fetchProgramScorecards } from "@/lib/program-scorecards";
 import InsightsClient from "@/components/InsightsClient";
 import RevenueTrackerStrip from "@/components/RevenueTrackerStrip";
+import LiveProgramScorecards from "@/components/LiveProgramScorecards";
+import RefreshButton from "@/components/RefreshButton";
 import type { Family } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +25,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const customEnd = params.end as string | undefined;
 
   // Parallel fetch — leads (lightweight, no joins), payments, activities, sheet,
-  // revenue tracker
-  const [leads, sheetData, paymentsRes, activitiesRes, revenue] = await Promise.all([
+  // revenue tracker, per-program scorecards
+  const [leads, sheetData, paymentsRes, activitiesRes, revenue, liveScorecards] = await Promise.all([
     fetchLeadsLight({ limit: 50000 }),
     loadAll().catch((e) => {
       console.error("[insights] sheet load failed:", e?.message);
@@ -41,6 +44,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
       .order("created_at", { ascending: false })
       .limit(5000),
     fetchRevenueMetrics().catch(() => null),
+    fetchProgramScorecards(6).catch(() => []),
   ]);
 
   // Aggregate server-side — client receives small JSON
@@ -56,7 +60,11 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     <>
       <Header />
       <main className="max-w-[1500px] mx-auto px-6 py-6">
+        <div className="flex items-center justify-end mb-3">
+          <RefreshButton />
+        </div>
         <RevenueTrackerStrip metrics={revenue} />
+        <LiveProgramScorecards cells={liveScorecards} />
         <InsightsClient insights={insights} />
       </main>
     </>
