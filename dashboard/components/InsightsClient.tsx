@@ -225,7 +225,7 @@ function HeroStrip({ hero }: { hero: InsightsPayload["hero"] }) {
         sub={hero.scoreable_leads !== hero.total_leads ? `${hero.scoreable_leads} scoreable` : "all scoreable"}
         delta={hero.leads_delta_pct} icon={<Users className="w-4 h-4" />} accent="amber" />
       <HeroTile label="Avg MQL" value={String(hero.avg_mql)} sub={`median ${hero.median_mql}`} icon={<Sparkles className="w-4 h-4" />} accent="indigo" big />
-      <HeroTile label="Hot 50+" value={`${hero.hot_pct}%`} sub={`${hero.super_hot_count} super hot`} icon={<TrendingUp className="w-4 h-4" />} accent="emerald" />
+      <HeroTile label="Qualified 60+" value={`${hero.hot_pct}%`} sub={`${hero.super_hot_count} hot 75+`} icon={<TrendingUp className="w-4 h-4" />} accent="emerald" />
       <HeroTile label="Marketing spend" value={inr(hero.spend_inr, { compact: true })} sub="incl GST · period" icon={<Wallet className="w-4 h-4" />} accent="rose" invert />
       <HeroTile label="CPA" value={hero.cpa_inr > 0 ? inr(hero.cpa_inr) : "—"}
         sub={hero.cpa_inr > 0 ? `spend ÷ ${fmtInt(hero.total_leads)} leads` : "no leads in period"}
@@ -297,9 +297,9 @@ function ProductCard({ prod, isOpen, onClick }: { prod: ProductInsight; isOpen: 
         </div>
       </div>
       <div className="text-xs text-fg-muted mb-3 flex items-center gap-2 flex-wrap">
-        <span><span className="text-emerald-600 font-semibold">{prod.hot_pct}%</span> hot 50+</span>
+        <span><span className="text-emerald-600 font-semibold">{prod.hot_pct}%</span> qualified 60+</span>
         <span>·</span>
-        <span><span className="text-amber-600 font-semibold">{prod.super_hot_count}</span> super hot</span>
+        <span><span className="text-amber-600 font-semibold">{prod.super_hot_count}</span> hot 75+</span>
         {prod.cpa_period_inr > 0 && <><span>·</span><span>CPA {inr(prod.cpa_period_inr, { compact: true })}</span></>}
       </div>
       <div className="h-10 w-full">
@@ -327,7 +327,7 @@ function DrillDown({ prod }: { prod: ProductInsight }) {
             <span className={`w-3 h-3 rounded-full ${aux.dot}`} />
             {prod.long_name} · drill-down
           </h2>
-          <p className="text-sm text-fg-muted mt-0.5">{prod.count} leads · {prod.scoreable} scoreable · avg {prod.avg_mql} · median {prod.median_mql} · {prod.hot_pct}% hot</p>
+          <p className="text-sm text-fg-muted mt-0.5">{prod.count} leads · {prod.scoreable} scoreable · avg {prod.avg_mql} · median {prod.median_mql} · {prod.hot_pct}% qualified 60+</p>
         </div>
       </div>
 
