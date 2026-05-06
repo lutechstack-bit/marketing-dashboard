@@ -163,26 +163,32 @@ async function computeLeadsStats(args: {
 }): Promise<LeadsStats> {
   const { programs, includeLost, period } = args;
 
-  // Pull leads in the program scope. We select the minimum needed for every
-  // counter (id, program, funnel_stage, score, score_breakdown, first_seen,
-  // created_at). 42k rows × ~80 bytes/row = ~3 MB — fine in memory.
+  // Pull leads in program scope. Get the count first, then fire all pages in
+  // PARALLEL — sequential pagination on 42k rows blew through Vercel's 10s
+  // timeout. Parallel pagination finishes in ~2 seconds.
   const PAGE = 1000;
+  const countRes = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .in("program", programs);
+  if (countRes.error) throw new Error(`leads-stats count: ${countRes.error.message}`);
+  const totalCount = countRes.count || 0;
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE));
+
+  const pageResults = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) =>
+      supabase
+        .from("leads")
+        .select("id,program,funnel_stage,score,score_breakdown,first_seen,created_at")
+        .in("program", programs)
+        .order("created_at", { ascending: false })
+        .range(i * PAGE, i * PAGE + PAGE - 1)
+    )
+  );
   const allLeads: any[] = [];
-  let offset = 0;
-  while (true) {
-    let q = supabase
-      .from("leads")
-      .select("id,program,funnel_stage,score,score_breakdown,first_seen,created_at")
-      .in("program", programs)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + PAGE - 1);
-    const { data, error } = await q;
-    if (error) throw new Error(`leads-stats fetch: ${error.message}`);
-    const page = data || [];
-    allLeads.push(...page);
-    if (page.length < PAGE) break;
-    offset += PAGE;
-    if (offset > 200_000) break; // safety
+  for (const r of pageResults) {
+    if (r.error) throw new Error(`leads-stats fetch: ${r.error.message}`);
+    allLeads.push(...(r.data || []));
   }
 
   // Period filter — uses first_seen || created_at as the lead's "born" date
@@ -282,17 +288,31 @@ async function computeLeadsStats(args: {
       .filter(l => inPeriod(l) && l.funnel_stage === "lost")
       .map(l => l.id);
     if (lostIds.length > 0) {
-      // Chunk by 200 to stay under PostgREST URL limit
-      for (let i = 0; i < lostIds.length; i += 200) {
-        const chunk = lostIds.slice(i, i + 200);
-        const { data } = await supabase
-          .from("form_submissions")
-          .select("lead_id,responses")
-          .in("lead_id", chunk);
-        for (const row of (data || [])) {
+      const chunks: string[][] = [];
+      for (let i = 0; i < lostIds.length; i += 200) chunks.push(lostIds.slice(i, i + 200));
+      const subResults = await Promise.all(
+        chunks.map(c => supabase.from("form_submissions").select("lead_id,responses").in("lead_id", c))
+      );
+      // Collapse per (lead_id) → keep the FIRST seen reason. A lead may have
+      // multiple form_submissions rows (csv_import + telecrm_sync) and we
+      // want to count each lead once, not once per submission row.
+      const reasonByLead = new Map<string, string | null>();
+      for (const r of subResults) {
+        for (const row of (r.data || [])) {
           const reason = (row as any).responses?.lost_reason || null;
-          lostReasonCounts.set(reason, (lostReasonCounts.get(reason) || 0) + 1);
+          if (!reasonByLead.has((row as any).lead_id) || (reason && !reasonByLead.get((row as any).lead_id))) {
+            reasonByLead.set((row as any).lead_id, reason);
+          }
         }
+      }
+      for (const reason of reasonByLead.values()) {
+        lostReasonCounts.set(reason, (lostReasonCounts.get(reason) || 0) + 1);
+      }
+      // Lost leads with NO form_submission row at all → count as "no reason"
+      const idsWithSubs = new Set(reasonByLead.keys());
+      const idsWithoutSubs = lostIds.filter(id => !idsWithSubs.has(id));
+      if (idsWithoutSubs.length) {
+        lostReasonCounts.set(null, (lostReasonCounts.get(null) || 0) + idsWithoutSubs.length);
       }
     }
   }
