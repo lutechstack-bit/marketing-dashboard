@@ -212,9 +212,29 @@ export async function POST(req: Request) {
       // (preserve earliest known).
       const isJunkName = (s?: string | null) =>
         !s || /^\d{10,}$/.test(s) || /^(test ad|null|undefined|-|—)$/i.test(s.trim());
-      const finalEmail = ex?.email || n.email;
-      const finalPhone = ex?.phone || n.phone;
+      let finalEmail: string | null = ex?.email || n.email;
+      let finalPhone: string | null = ex?.phone || n.phone;
       const finalName  = (!isJunkName(ex?.name) ? ex?.name : null) || n.name;
+
+      // Conflict-safe field selection — never write an email/phone that's
+      // already claimed by a different lead id, since (email,program) and
+      // (phone,program) are unique in Supabase. Without this, an email-merge
+      // case where the TeleCRM lead's phone matches a *different* DB row
+      // produces a unique-constraint violation on bulk upsert.
+      if (idByE && idByP && idByE !== idByP) {
+        finalPhone = ex?.phone || null;          // drop conflicting phone
+      }
+      if (finalEmail) {
+        const claimedBy = claimedByEmail.get(`${finalEmail}|${n.program}`);
+        if (claimedBy && claimedBy !== id) finalEmail = ex?.email || null;
+      }
+      if (finalPhone) {
+        const claimedBy = claimedByPhone.get(`${finalPhone}|${n.program}`);
+        if (claimedBy && claimedBy !== id) finalPhone = ex?.phone || null;
+      }
+      // Update claim maps so subsequent rows in this batch see the bindings
+      if (finalEmail) claimedByEmail.set(`${finalEmail}|${n.program}`, id);
+      if (finalPhone) claimedByPhone.set(`${finalPhone}|${n.program}`, id);
       const finalStage = pickHigherStage(ex?.funnel_stage, n.funnel_stage);
       const finalFirstSeen = ex?.first_seen || n.first_seen;
       // TeleCRM is canonical on score / attribution — overwrite always
@@ -264,13 +284,18 @@ export async function POST(req: Request) {
 
       const { error: leadErr } = await admin.from("leads").upsert(leadRows, { onConflict: "id" });
       if (leadErr) {
-        sampleErrors.push(`page ${p}: lead upsert: ${leadErr.message.slice(0, 200)}`);
-        stats.errors += leadRows.length;
-        // Recover by per-row upsert
+        if (sampleErrors.length < 6) sampleErrors.push(`page ${p}: bulk: ${leadErr.message.slice(0, 220)}`);
+        // Recover row-by-row. Count only the rows that genuinely fail —
+        // per-row retries that succeed are NOT errors, just slower writes.
+        let realFailures = 0;
         for (const r of leadRows) {
           const { error: e2 } = await admin.from("leads").upsert([r], { onConflict: "id" });
-          if (e2 && sampleErrors.length < 8) sampleErrors.push(`row ${r.id.slice(0, 8)}: ${e2.message.slice(0, 80)}`);
+          if (e2) {
+            realFailures++;
+            if (sampleErrors.length < 8) sampleErrors.push(`row ${r.id.slice(0, 8)}: ${e2.message.slice(0, 100)}`);
+          }
         }
+        stats.errors += realFailures;
       }
       const { error: subErr } = await admin.from("form_submissions").upsert(subRows, { onConflict: "id" });
       if (subErr) {
