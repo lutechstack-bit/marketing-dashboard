@@ -4,7 +4,7 @@
   "buildCommand": "next build",
   "installCommand": "npm install --legacy-peer-deps",
   "crons": [
-    { "path": "/api/sync",                 "schedule": "30 0 * * *" },
-    { "path": "/api/cron/telecrm-sync",    "schedule": "*/15 * * * *" }
+    { "path": "/api/sync",              "schedule": "30 0 * * *" },
+    { "path": "/api/cron/telecrm-sync", "schedule": "0 3 * * *" }
   ]
 }
