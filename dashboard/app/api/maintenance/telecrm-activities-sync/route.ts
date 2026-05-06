@@ -21,9 +21,18 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getCurrentRep } from "@/lib/auth/supabase-server";
 import { revalidateTag } from "next/cache";
+import crypto from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// Convert a 24-char Mongo ObjectID (TeleCRM action.id format) to a stable
+// UUID v4-shape so it fits Postgres' uuid column type. Deterministic via
+// SHA-1 so re-runs hit the same key (idempotent upsert).
+function objectIdToUuid(objectId: string): string {
+  const h = crypto.createHash("sha1").update(`tcrm:${objectId}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
 
 const SYNC_BASE = "https://next.telecrm.in/autoupdate/v2";
 
@@ -188,9 +197,9 @@ export async function POST(req: Request) {
         const age = Date.now() - (a.creationTimestamp || 0);
         if (age > 90 * 86400_000) continue;
         upsertRows.push({
-          id: a.id,
+          id: objectIdToUuid(a.id),         // 24-char hex → UUID
           lead_id: lead.id,
-          rep_name: a.employeeid || null,    // Firebase UID — name resolution TBD
+          rep_name: a.employeeid || null,   // Firebase UID — name resolution TBD
           action: a.type || "UNKNOWN",
           notes: [a.note, a.feedback].filter(Boolean).join(" · ") || null,
           created_at: new Date(a.creationTimestamp).toISOString(),
