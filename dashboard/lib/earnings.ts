@@ -239,6 +239,34 @@ export async function manualLockEarning(opts: {
     reason: `Manual attribution by admin${opts.notes ? `: ${opts.notes}` : ""}`,
     payload: { manual: true, attributed_by: opts.attributed_by },
   });
+
+  // ALSO bump the lead's funnel_stage so they leave the Abandoned bucket.
+  // A manual attribution means: "I'm crediting this rep because this lead
+  // converted (paid app fee)." So the stage should reflect that. Only
+  // promote, never downgrade — if the lead is already at accepted/balance_paid
+  // we leave it.
+  try {
+    const { data: lead } = await supabase.from("leads")
+      .select("funnel_stage").eq("id", opts.lead_id).maybeSingle();
+    const currentStage = lead?.funnel_stage;
+    const PROMOTE_FROM = ["form_partial", "form_submitted"];
+    if (currentStage && PROMOTE_FROM.includes(currentStage)) {
+      await supabase.from("leads")
+        .update({ funnel_stage: "app_fee_paid", last_activity: now })
+        .eq("id", opts.lead_id);
+    }
+  } catch (e: any) {
+    console.error("[manualLockEarning] funnel_stage promote failed:", e?.message);
+    // Non-fatal — earning is already created.
+  }
+
+  // Bust caches so the rep sees their new locked earning + the lead leaves
+  // the Abandoned bucket on next /queue load.
+  try {
+    const { revalidateTag } = await import("next/cache");
+    revalidateTag("leads");
+  } catch { /* not in app context */ }
+
   return data as EarningRow;
 }
 
