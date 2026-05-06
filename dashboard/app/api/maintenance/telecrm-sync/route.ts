@@ -84,6 +84,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({})) as {
     since_ms?: number;
     max_pages?: number;
+    start_skip?: number;
     dry_run?: boolean;
     // First-run override: when env vars aren't set yet, pass the TeleCRM
     // credentials in the request body. Bootstrap-token-protected, so this
@@ -98,24 +99,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing TELECRM_SYNC_TOKEN or TELECRM_ENTERPRISE_ID (set env or pass telecrm_token + telecrm_enterprise_id in body)" }, { status: 500 });
   }
   const sinceMs = body.since_ms || 0;
-  const maxPages = body.max_pages || 500;
+  const maxPages = body.max_pages || 30;          // ~3000 leads / call → fits in 60s
   const dryRun = !!body.dry_run;
   const PAGE = 100;
+  const TIME_BUDGET_MS = 50_000;                  // bail before Vercel kills us
+  const startSkip = body.start_skip || 0;
 
   const t0 = Date.now();
   const stats = {
     pages: 0, fetched: 0, normalized: 0, skipped_noidentity: 0,
     inserted: 0, updated: 0, merged: 0, errors: 0, total_in_telecrm: 0,
     duration_ms: 0,
+    next_skip: null as number | null,             // resume here on next call
+    done: false,
   };
   const sampleErrors: string[] = [];
 
   const admin = adminClient();
-  // Pre-fetch existing leads keyed by (email|program) and (phone|program). For
-  // a 100-lead page, this is a single OR query.
-  // We'll do this per-page rather than upfront so memory stays small.
 
-  let skip = 0;
+  let skip = startSkip;
   for (let p = 0; p < maxPages; p++) {
     let pageData;
     try {
@@ -277,7 +279,18 @@ export async function POST(req: Request) {
     }
 
     skip += pageData.leads.length;
-    if (pageData.leads.length < PAGE) break;
+    if (pageData.leads.length < PAGE) {
+      stats.done = true;
+      break;
+    }
+    // Stop early if we're approaching the Vercel timeout
+    if (Date.now() - t0 > TIME_BUDGET_MS) {
+      stats.next_skip = skip;
+      break;
+    }
+  }
+  if (!stats.done && stats.next_skip === null && stats.fetched > 0) {
+    stats.next_skip = skip;
   }
 
   stats.duration_ms = Date.now() - t0;
