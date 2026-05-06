@@ -60,6 +60,43 @@ const num = (x: any): number => {
 };
 
 /**
+ * Sheets returns percentage cells as fractions (0.197 for "19.7%"). Detect
+ * fractional values and multiply by 100. If the value is already > 1 we
+ * assume it's already in percentage form.
+ */
+const pct = (x: any): number => {
+  const n = num(x);
+  if (n === 0) return 0;
+  // If it looks like a fraction (0 < x < 1), it came from a Sheets % cell
+  // and needs to be scaled. Anything ≥ 1 is treated as already-percent.
+  return Math.abs(n) < 1 ? Math.round(n * 1000) / 10 : Math.round(n * 10) / 10;
+};
+
+/**
+ * Convert a value that may be a Google Sheets date serial (days since
+ * 1899-12-30) or an ISO date string into a YYYY-MM cohort month string.
+ * Returns null if unparseable.
+ */
+function parseCohortMonth(raw: any): string | null {
+  if (raw == null || raw === "") return null;
+  // Sheets date serial number → days since 1899-12-30
+  if (typeof raw === "number" || /^\d+(\.\d+)?$/.test(String(raw))) {
+    const serial = Number(raw);
+    if (serial > 25569 && serial < 80000) { // 1970-01-01 to ~2119
+      const ms = (serial - 25569) * 86400_000;
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) {
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      }
+    }
+    return null;
+  }
+  const d = new Date(String(raw));
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
  * Pull headline metrics + light time-series from the Revenue Tracker sheet.
  * Returns ok:false with error reason if the sheet isn't shared with the
  * service account (graceful degradation).
@@ -111,20 +148,37 @@ async function fetchRevenueMetricsImpl(): Promise<RevenueMetrics> {
     return 0;
   };
 
+  // Helper: lookup raw cell value (not coerced through num())
+  const findRawByLabel = (label: string): any => {
+    const re = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < (m[r] || []).length; c++) {
+        const cell = String(m[r][c] || "").trim();
+        if (re.test(cell)) {
+          for (let d = r + 1; d < Math.min(r + 4, m.length); d++) {
+            const v = m[d]?.[c];
+            if (v != null && String(v).trim() !== "") return v;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
   const bookedRevenue       = findValueByLabel("Booked Revenue");
   const cashReceived        = findValueByLabel("Cash Received");
-  const collectionPct       = findValueByLabel("Collection %");
+  const collectionPct       = pct(findRawByLabel("Collection %"));
   const outstandingBalance  = findValueByLabel("Outstanding Balance");
   const lostWrittenOff      = findValueByLabel("Lost / Written-Off");
   const netCashIn           = findValueByLabel("Net Cash In");
   const applications        = findValueByLabel("Applications");
   const newEnrollments      = findValueByLabel("New Enrollments");
   const conversions         = findValueByLabel("Conversions");
-  const conversionRate      = findValueByLabel("Conversion Rate");
+  const conversionRate      = pct(findRawByLabel("Conversion Rate"));
   const refunds             = findValueByLabel("Refunds \\(Money Out\\)");
   const avgRevPerStudent    = findValueByLabel("Avg Revenue / Student");
   const avgCollectedStudent = findValueByLabel("Avg Collected / Student");
-  const appToEnrollmentPct  = findValueByLabel("App → Enrollment %") || findValueByLabel("App ?? Enrollment %");
+  const appToEnrollmentPct  = pct(findRawByLabel("App → Enrollment %") || findRawByLabel("App ?? Enrollment %"));
   const failedTx            = findValueByLabel("Failed Transactions");
 
   // ---- Parse "Transaction Log" — group by month for charts ----
@@ -142,11 +196,8 @@ async function fetchRevenueMetricsImpl(): Promise<RevenueMetrics> {
     if (colDate >= 0 && colAmount >= 0) {
       for (let i = 1; i < tl.length; i++) {
         const row = tl[i] || [];
-        const dRaw = row[colDate];
-        if (!dRaw) continue;
-        const d = new Date(String(dRaw));
-        if (isNaN(d.getTime())) continue;
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const ym = parseCohortMonth(row[colDate]);
+        if (!ym) continue;
         const amt = num(row[colAmount]);
         const type = String(row[colType] || "").toLowerCase();
         if (/refund/i.test(type)) {
