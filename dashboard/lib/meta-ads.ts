@@ -314,6 +314,112 @@ function dateNDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
 }
 
+// ---------------------------------------------------------------- per-program × per-month
+
+export type MetaProgramMonth = {
+  program: string;        // FFM/FW/FC/FAI/BFP/VE/L3C
+  family: Family;
+  ym: string;             // "YYYY-MM"
+  year: number;
+  month: number;
+  spend_inr: number;      // incl GST
+  impressions: number;
+  clicks: number;
+  campaigns: number;
+};
+
+/**
+ * Pull last N months of Meta spend, broken down by (program × month). Used
+ * by the Program Scorecards section so each card shows live spend per month
+ * instead of relying on the manually-maintained sheet "Inputs" tab.
+ *
+ * Cached 1h.
+ */
+export async function fetchMonthlySpendByProgram(opts: {
+  monthsBack?: number;       // default 12
+  includeFamilies?: Family[];
+} = {}): Promise<MetaProgramMonth[] | null> {
+  const monthsBack = opts.monthsBack ?? 12;
+  const includeFamilies = opts.includeFamilies ?? ["Forge", "Live"];
+  const familiesKey = includeFamilies.slice().sort().join(",");
+  const cached = unstable_cache(
+    async () => {
+      try { return await fetchMonthlySpendByProgramImpl(monthsBack, includeFamilies); }
+      catch (e: any) { console.error("[meta-ads] fetchMonthlySpendByProgram failed:", e?.message); return null; }
+    },
+    ["meta-spend-by-program-v1", String(monthsBack), familiesKey],
+    { revalidate: 3600, tags: ["meta-ads"] },
+  );
+  return cached();
+}
+
+async function fetchMonthlySpendByProgramImpl(monthsBack: number, includeFamilies: Family[]): Promise<MetaProgramMonth[]> {
+  const token = process.env.META_ACCESS_TOKEN;
+  const account = process.env.META_AD_ACCOUNT_ID_API;
+  if (!token || !account) return [];
+
+  // Build month windows
+  const now = new Date();
+  const windows: { ym: string; year: number; month: number; since: string; until: string }[] = [];
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const year = d.getUTCFullYear(), month = d.getUTCMonth() + 1;
+    const since = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
+    const until = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    windows.push({ ym: `${year}-${String(month).padStart(2, "0")}`, year, month, since, until });
+  }
+
+  // Fetch insights at campaign-level monthly with time_increment so we get
+  // one row per (campaign × month). Single API page-set covers it.
+  const include = new Set(includeFamilies);
+  const out: MetaProgramMonth[] = [];
+
+  // Fire one call per month in parallel — Meta supports time_increment but
+  // mixing across long windows is brittle for our classifier. Per-month
+  // calls are <2s each in parallel.
+  const results = await Promise.all(windows.map(async w => {
+    const tr = encodeURIComponent(JSON.stringify({ since: w.since, until: w.until }));
+    const fields = "spend,impressions,clicks,campaign_name,campaign_id";
+    let nextUrl: string | null =
+      `${META_API}/${account}/insights?access_token=${token}&time_range=${tr}&level=campaign&fields=${fields}&limit=200`;
+    const rows: any[] = [];
+    while (nextUrl) {
+      const d: any = await metaGet(nextUrl);
+      rows.push(...(d.data || []));
+      nextUrl = d.paging?.next || null;
+    }
+    // Aggregate per program
+    const byProg: Record<string, { family: Family; spend: number; impressions: number; clicks: number; campaigns: number }> = {};
+    for (const r of rows) {
+      const name = r.campaign_name || "";
+      const { family, program } = classifyCampaignFull(name);
+      if (!include.has(family) || !program || program === "AMBIGUOUS_FFM" || program === "NON_FORGE") {
+        // For AMBIGUOUS_FFM (forge fallback), assign to FFM
+        if (family === "Forge" && (program === "AMBIGUOUS_FFM" || !program)) {
+          if (!byProg["FFM"]) byProg["FFM"] = { family: "Forge", spend: 0, impressions: 0, clicks: 0, campaigns: 0 };
+          byProg["FFM"].spend       += parseFloat(r.spend || "0");
+          byProg["FFM"].impressions += parseInt(r.impressions || "0");
+          byProg["FFM"].clicks      += parseInt(r.clicks || "0");
+          byProg["FFM"].campaigns   += 1;
+        }
+        continue;
+      }
+      if (!byProg[program]) byProg[program] = { family, spend: 0, impressions: 0, clicks: 0, campaigns: 0 };
+      byProg[program].spend       += parseFloat(r.spend || "0");
+      byProg[program].impressions += parseInt(r.impressions || "0");
+      byProg[program].clicks      += parseInt(r.clicks || "0");
+      byProg[program].campaigns   += 1;
+    }
+    return Object.entries(byProg).map(([program, agg]) => ({
+      program, family: agg.family, ym: w.ym, year: w.year, month: w.month,
+      spend_inr: agg.spend * (1 + GST),
+      impressions: agg.impressions, clicks: agg.clicks, campaigns: agg.campaigns,
+    } as MetaProgramMonth));
+  }));
+  for (const arr of results) out.push(...arr);
+  return out;
+}
+
 // ---------------------------------------------------------------- legacy spend
 
 /**
