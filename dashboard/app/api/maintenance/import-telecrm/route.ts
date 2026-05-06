@@ -454,7 +454,12 @@ export async function POST(req: Request) {
     if (finalEmail) claimedByEmail.set(`${finalEmail}|${p.program}`, id);
     if (finalPhone) claimedByPhone.set(`${finalPhone}|${p.program}`, id);
 
-    const finalName  = existing?.name || p.name;
+    // Treat names that look like ad IDs / placeholder junk as empty so the CSV
+    // value (real first+last) overrides them. Fixes a previous import that
+    // accidentally bound the AD NAME column to lead.name on inserts.
+    const isJunkName = (n?: string | null) =>
+      !n || /^\d{10,}$/.test(n) || /^(test ad|null|undefined|-|—)$/i.test(n.trim());
+    const finalName  = (!isJunkName(existing?.name) ? existing?.name : null) || p.name;
     const finalScore = Math.max(p.score, existing?.score || 0);
     const finalSource = existing?.source_campaign_name || p.formSource;
     // CRITICAL: never downgrade. If existing was already 'app_fee_paid' (set by
