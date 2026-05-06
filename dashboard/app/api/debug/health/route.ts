@@ -63,16 +63,22 @@ export async function GET() {
         actuals_first_5_metrics: data.actuals.slice(0, 5).map(r => r.metric),
         actuals_months: data.actuals[0]?.values.length || 0,
         spend_trend_months: data.spendTrend.length,
-        spend_trend_programs: [...new Set(data.spendTrend.map(r => r.program))],
+        // spendTrend is per-program-row; programs come from FFM/FW/FC/FAI keys per row
+        spend_trend_total_months: data.spendTrend.length,
         campaigns_count: data.campaigns?.length ?? 0,
         top_ads_count: data.topAds?.length ?? 0,
         master_rows: data.master?.length ?? 0,
-        program_scorecards: data.programScorecards?.map(s => ({
-          code: s.code, applicants: s.applicants, app_fee_count: s.appFeeCount,
-          revenue_inr: s.totalRevenueInr, ads_spend_inr: s.adsSpendInr,
-        })) ?? [],
-        marketing_monthly_rows: data.monthly?.length ?? 0,
-        marketing_monthly_programs: data.monthly ? [...new Set(data.monthly.map((r: any) => r.program))] : [],
+        program_scorecards: (data.programScorecards || []).map((s: any) => ({
+          program: s.program, name: s.name,
+          this_applicants: s.this_month?.applicants,
+          this_app_fee:    s.this_month?.app_fee_count,
+          this_total_rev:  s.this_month?.total_rev,
+          this_ads_spend:  s.this_month?.ads_spend,
+        })),
+        marketing_monthly_rows: (data as any).monthly?.length ?? 0,
+        marketing_monthly_programs: (data as any).monthly
+          ? [...new Set(((data as any).monthly).map((r: any) => r.program))]
+          : [],
       },
     };
   } catch (e: any) {
