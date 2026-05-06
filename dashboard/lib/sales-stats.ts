@@ -42,8 +42,16 @@ const todayStartIso = () => {
  * Cached 30s, tag "leads" + "tasks" so any write that affects revenue or
  * pipeline invalidates this.
  */
-export const fetchTodaysActivity = unstable_cache(
-  async (repId: string, repName: string | null): Promise<TodaysActivity> => {
+export async function fetchTodaysActivity(repId: string, repName: string | null): Promise<TodaysActivity> {
+  const cached = unstable_cache(
+    async () => fetchTodaysActivityImpl(repId, repName),
+    ["fetch-todays-activity-v2", repId, repName || "_"],
+    { revalidate: 30, tags: ["leads", "tasks"] },
+  );
+  return cached();
+}
+
+async function fetchTodaysActivityImpl(repId: string, repName: string | null): Promise<TodaysActivity> {
     const since = todayStartIso();
 
     // We log activities with `rep_name` (legacy) — the lookup matches on either
@@ -86,10 +94,7 @@ export const fetchTodaysActivity = unstable_cache(
       pipeline_locked: pipelineSum,
       pipeline_count: (lockedAll.data || []).length,
     };
-  },
-  ["fetch-todays-activity-v1"],
-  { revalidate: 30, tags: ["leads", "tasks"] },
-);
+}
 
 /**
  * Top 5 "closest to converting" leads for a rep.
@@ -100,8 +105,16 @@ export const fetchTodaysActivity = unstable_cache(
  *
  * Returns leads from the rep's assigned programs only (via rep_assignments).
  */
-export const fetchTopOpportunities = unstable_cache(
-  async (repId: string): Promise<TopOpportunity[]> => {
+export async function fetchTopOpportunities(repId: string): Promise<TopOpportunity[]> {
+  const cached = unstable_cache(
+    async () => fetchTopOpportunitiesImpl(repId),
+    ["fetch-top-opportunities-v2", repId],
+    { revalidate: 60, tags: ["leads"] },
+  );
+  return cached();
+}
+
+async function fetchTopOpportunitiesImpl(repId: string): Promise<TopOpportunity[]> {
     // First find what programs this rep owns
     const { data: assignments } = await supabase
       .from("rep_assignments")
@@ -168,10 +181,7 @@ export const fetchTopOpportunities = unstable_cache(
     });
 
     return scored.slice(0, 5);
-  },
-  ["fetch-top-opportunities-v1"],
-  { revalidate: 60, tags: ["leads"] },
-);
+}
 
 // ============================================================================
 // MONEY ON THE TABLE — pool of leads the rep can convert for their incentive
@@ -209,8 +219,16 @@ export type EarnableNow = {
   }>;
 };
 
-export const fetchEarnableNow = unstable_cache(
-  async (repId: string): Promise<EarnableNow> => {
+export async function fetchEarnableNow(repId: string): Promise<EarnableNow> {
+  const cached = unstable_cache(
+    async () => fetchEarnableNowImpl(repId),
+    ["fetch-earnable-now-v2", repId],
+    { revalidate: 60, tags: ["leads"] },
+  );
+  return cached();
+}
+
+async function fetchEarnableNowImpl(repId: string): Promise<EarnableNow> {
     const empty: EarnableNow = { total_count: 0, total_potential_earnings: 0, by_program: [], top_leads: [] };
 
     // 1. What programs is this rep assigned to + their per-product incentive?
@@ -278,7 +296,4 @@ export const fetchEarnableNow = unstable_cache(
     }));
 
     return { total_count, total_potential_earnings, by_program, top_leads };
-  },
-  ["fetch-earnable-now-v1"],
-  { revalidate: 60, tags: ["leads"] },
-);
+}

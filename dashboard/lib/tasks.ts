@@ -56,28 +56,33 @@ export async function fetchTasksForLead(leadId: string): Promise<TaskRow[]> {
  * Cached count of overdue + due-today tasks per rep — drives the header bell
  * badge. 30s cache, tag "tasks" so writes can revalidate.
  */
-export const fetchTaskCountForRep = unstable_cache(
-  async (repId: string): Promise<{ overdue: number; today: number; total: number }> => {
-    const now = new Date();
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-    const [overdueRes, todayRes] = await Promise.all([
-      supabase.from("tasks").select("*", { count: "exact", head: true })
-        .eq("assigned_to", repId).eq("status", "pending")
-        .lt("due_at", now.toISOString()),
-      supabase.from("tasks").select("*", { count: "exact", head: true })
-        .eq("assigned_to", repId).eq("status", "pending")
-        .gte("due_at", now.toISOString())
-        .lte("due_at", todayEnd.toISOString()),
-    ]);
-
-    const overdue = overdueRes.count || 0;
-    const today = todayRes.count || 0;
-    return { overdue, today, total: overdue + today };
-  },
-  ["fetch-task-count-v1"],
-  { revalidate: 30, tags: ["tasks"] },
-);
+export async function fetchTaskCountForRep(repId: string): Promise<{ overdue: number; today: number; total: number }> {
+  // Cache key MUST include repId so each rep gets their own cache entry.
+  // Earlier implementations relied on unstable_cache hashing function args
+  // — that turned out unreliable (caused cross-rep + cross-bucket leaks).
+  // Putting repId in keyParts is guaranteed.
+  const cached = unstable_cache(
+    async () => {
+      const now = new Date();
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const [overdueRes, todayRes] = await Promise.all([
+        supabase.from("tasks").select("*", { count: "exact", head: true })
+          .eq("assigned_to", repId).eq("status", "pending")
+          .lt("due_at", now.toISOString()),
+        supabase.from("tasks").select("*", { count: "exact", head: true })
+          .eq("assigned_to", repId).eq("status", "pending")
+          .gte("due_at", now.toISOString())
+          .lte("due_at", todayEnd.toISOString()),
+      ]);
+      const overdue = overdueRes.count || 0;
+      const today = todayRes.count || 0;
+      return { overdue, today, total: overdue + today };
+    },
+    ["fetch-task-count-v2", repId],
+    { revalidate: 30, tags: ["tasks"] },
+  );
+  return cached();
+}
 
 /** Create a task. Used by both the API route and webhook auto-rules. */
 export async function createTask(input: {

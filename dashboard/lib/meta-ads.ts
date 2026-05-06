@@ -136,14 +136,26 @@ async function fetchMonthlySpendImpl(
  * Default = Forge + Live (excludes Masterclass / Workshop / Other), per
  * founder spec: "those should not be included in the marketing spend".
  */
-export const fetchMonthlySpend = unstable_cache(
-  async (year: number, month: number, includeFamilies: Family[] = ["Forge", "Live"]) => {
-    try { return await fetchMonthlySpendImpl(year, month, includeFamilies); }
-    catch (e: any) {
-      console.error("[meta-ads] fetchMonthlySpend failed:", e?.message);
-      return null;
-    }
-  },
-  ["meta-monthly-spend-v2-filtered"],
-  { revalidate: 3600, tags: ["meta-ads"] },
-);
+export async function fetchMonthlySpend(
+  year: number,
+  month: number,
+  includeFamilies: Family[] = ["Forge", "Live"],
+): Promise<MetaMonthlySpend | null> {
+  // Cache key MUST include year/month/families. Putting them in keyParts
+  // (not relying on unstable_cache's arg-hashing) ensures different months /
+  // family filters get different cache entries — same fix pattern that
+  // resolved the fetchLeads bucket-leak bug.
+  const familiesKey = includeFamilies.slice().sort().join(",");
+  const cached = unstable_cache(
+    async () => {
+      try { return await fetchMonthlySpendImpl(year, month, includeFamilies); }
+      catch (e: any) {
+        console.error("[meta-ads] fetchMonthlySpend failed:", e?.message);
+        return null;
+      }
+    },
+    ["meta-monthly-spend-v3", String(year), String(month), familiesKey],
+    { revalidate: 3600, tags: ["meta-ads"] },
+  );
+  return cached();
+}

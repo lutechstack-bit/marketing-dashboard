@@ -103,30 +103,32 @@ export async function fetchLeads(opts: {
   enrichments?: EnrichmentKey[];
   sort?: "score" | "recent";
 } = {}): Promise<LeadRow[]> {
-  // Stable cache key from opts
+  // CRITICAL: the cache key MUST be inside keyParts. unstable_cache hashes
+  // keyParts strictly; passing args to the wrapped function does NOT make
+  // the cache distinguish calls reliably. Earlier we passed the JSON key
+  // as a function arg + had keyParts=["fetch-leads-v3"] — that caused
+  // three parallel fetches with different `stages` to all return the same
+  // cached result, which surfaced as "same leads in every bucket on FW".
+  //
+  // Building unstable_cache inside the function looks wrong but is correct:
+  // Next.js dedupes by keyParts so calls with identical keys still share
+  // a cache entry across requests. Different opts → different keyParts →
+  // different cache entry.
   const key = JSON.stringify({
-    programs: (opts.programs || []).sort(),
-    stages: (opts.stages || []).sort(),
+    programs: (opts.programs || []).slice().sort(),
+    stages: (opts.stages || []).slice().sort(),
     minScore: opts.minScore ?? null,
     limit: opts.limit ?? 500,
-    enrichments: (opts.enrichments || []).sort(),
+    enrichments: (opts.enrichments || []).slice().sort(),
     sort: opts.sort ?? "score",
   });
-  return cachedFetchLeads(key, opts);
+  const cached = unstable_cache(
+    () => fetchLeadsImpl(opts),
+    ["fetch-leads-v4", key],
+    { revalidate: 30, tags: ["leads"] },
+  );
+  return cached();
 }
-
-const cachedFetchLeads = unstable_cache(
-  async (_cacheKey: string, opts: {
-    programs?: string[];
-    stages?: string[];
-    minScore?: number;
-    limit?: number;
-    enrichments?: EnrichmentKey[];
-    sort?: "score" | "recent";
-  }) => fetchLeadsImpl(opts),
-  ["fetch-leads-v3"],
-  { revalidate: 30, tags: ["leads"] },
-);
 
 async function fetchLeadsImpl(opts: {
   programs?: string[];
