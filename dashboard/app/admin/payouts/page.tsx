@@ -13,19 +13,21 @@ export default async function PayoutsPage() {
 
   // Fetch all earnings in non-final states + recent paid out (last 90d) for context
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400_000).toISOString();
-  const [earningsRes, repsRes, leadsRes] = await Promise.all([
+  const [earningsRes, repsRes, leadsRes, assignmentsRes] = await Promise.all([
     supabase.from("incentive_earnings")
       .select("*")
       .or(`status.eq.locked,status.eq.unlocked,status.eq.approved,and(status.eq.paid_out,paid_out_at.gte.${ninetyDaysAgo}),and(status.eq.reverted,reverted_at.gte.${ninetyDaysAgo})`)
       .order("locked_at", { ascending: false })
       .limit(500),
-    supabase.from("sales_reps").select("id,full_name,email,role"),
+    supabase.from("sales_reps").select("id,full_name,email,role,active").eq("active", true),
     supabase.from("leads").select("id,name,email,phone,program,funnel_stage").limit(10000),
+    supabase.from("rep_assignments").select("rep_id,product_code,edition_match,edition_label,incentive_inr").eq("active", true),
   ]);
 
   const earnings = (earningsRes.data || []) as any[];
   const reps = (repsRes.data || []) as any[];
   const leads = (leadsRes.data || []) as any[];
+  const assignments = (assignmentsRes.data || []) as any[];
   const repsById = Object.fromEntries(reps.map((r: any) => [r.id, r]));
   const leadsById = Object.fromEntries(leads.map((l: any) => [l.id, l]));
 
@@ -37,6 +39,9 @@ export default async function PayoutsPage() {
           earnings={earnings}
           repsById={repsById}
           leadsById={leadsById}
+          reps={reps}
+          assignments={assignments}
+          allLeads={leads}
         />
       </main>
     </>

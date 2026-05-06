@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { getCurrentRep, createSupabaseServerClient } from "@/lib/auth/supabase-server";
-import { approveEarning, markPaidOut } from "@/lib/earnings";
+import { approveEarning, markPaidOut, manualLockEarning } from "@/lib/earnings";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +58,35 @@ export async function POST(req: Request) {
       paid_out: results.filter(Boolean).length,
       failed: results.filter(r => !r).length,
     });
+  }
+
+  // Manually attribute a conversion to a rep — creates a 'locked'
+  // incentive_earnings row that follows the same lifecycle as a webhook-
+  // created one. Use case: founder backfilling old conversions that
+  // happened before the earnings system existed, or attributing organic
+  // converters to the rep who actually pre-warmed them.
+  if (action === "attribute_manual") {
+    const { lead_id, rep_id, product_code, edition_label, amount_inr, notes } = body || {};
+    if (!lead_id || !rep_id || !product_code || !amount_inr) {
+      return NextResponse.json({
+        error: "lead_id, rep_id, product_code, amount_inr required",
+      }, { status: 400 });
+    }
+    const amt = Number(amount_inr);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return NextResponse.json({ error: "amount_inr must be > 0" }, { status: 400 });
+    }
+    const result = await manualLockEarning({
+      lead_id,
+      rep_id,
+      product_code,
+      edition_label: edition_label || null,
+      amount_inr: amt,
+      attributed_by: adminId,
+      notes: notes || null,
+    });
+    if (!result) return NextResponse.json({ error: "failed to create earning" }, { status: 500 });
+    return NextResponse.json({ ok: true, earning: result });
   }
 
   return NextResponse.json({ error: `unknown action '${action}'` }, { status: 400 });

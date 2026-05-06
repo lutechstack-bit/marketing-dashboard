@@ -183,6 +183,65 @@ export async function lockEarning(opts: {
   return data as EarningRow;
 }
 
+/**
+ * MANUAL attribution by an admin/founder. Same shape as a webhook-driven
+ * lock except there's no Razorpay slot_payment_id — the trigger is a human
+ * decision. Idempotency key falls back to a synthetic one
+ * "manual_<lead_id>_<rep_id>" so admins can't accidentally double-attribute
+ * the same lead to the same rep.
+ *
+ * Used when:
+ *   · Lead came in BEFORE the earnings system existed and needs a back-fill
+ *   · Lead converted organically (no rep call) but rep deserves credit
+ *     because they pre-warmed the conversation outside the system
+ *   · Any other one-off attribution case
+ */
+export async function manualLockEarning(opts: {
+  lead_id: string;
+  rep_id: string;
+  product_code: string;
+  edition_label: string | null;
+  amount_inr: number;
+  attributed_by: string; // admin/founder rep_id
+  notes?: string;
+}): Promise<EarningRow | null> {
+  const dedupKey = `manual_${opts.lead_id}_${opts.rep_id}`;
+  const { data: existing } = await supabase
+    .from("incentive_earnings")
+    .select("*")
+    .eq("trigger_slot_payment_id", dedupKey)
+    .limit(1);
+  if (existing && existing.length > 0) return existing[0] as EarningRow;
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("incentive_earnings")
+    .insert({
+      lead_id: opts.lead_id,
+      rep_id: opts.rep_id,
+      product_code: opts.product_code,
+      edition_label: opts.edition_label,
+      amount_inr: opts.amount_inr,
+      status: "locked",
+      locked_at: now,
+      trigger_slot_payment_id: dedupKey,
+      notes: opts.notes ? `Manual: ${opts.notes}` : "Manual attribution by admin",
+    })
+    .select()
+    .single();
+  if (error || !data) {
+    console.error("[earnings.manualLockEarning] error:", error?.message);
+    return null;
+  }
+  await logAudit({
+    earning_id: data.id, from_status: null, to_status: "locked",
+    changed_by: opts.attributed_by,
+    reason: `Manual attribution by admin${opts.notes ? `: ${opts.notes}` : ""}`,
+    payload: { manual: true, attributed_by: opts.attributed_by },
+  });
+  return data as EarningRow;
+}
+
 /** Move locked earning to 'unlocked' on balance payment. Looks up by lead_id. */
 export async function unlockEarningForLead(opts: {
   lead_id: string;

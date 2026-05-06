@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Lock, Unlock, CheckCheck, RotateCcw, ChevronRight, AlertCircle, Loader2 } from "lucide-react";
+import { ShieldCheck, Lock, Unlock, CheckCheck, RotateCcw, ChevronRight, AlertCircle, Loader2, UserPlus, Search, X } from "lucide-react";
 import { inr, fmtDate } from "@/lib/format";
 
 type Earning = {
@@ -33,15 +33,27 @@ const STATUS_META: Record<Earning["status"], { label: string; cls: string; icon:
   reverted:  { label: "❌ Reverted",    cls: "bg-rose-50 text-rose-700 ring-rose-200",                          icon: <RotateCcw className="w-3.5 h-3.5" /> },
 };
 
-export default function PayoutsClient({ earnings, repsById, leadsById }: {
+type RepAssignment = {
+  rep_id: string;
+  product_code: string;
+  edition_match: string | null;
+  edition_label: string | null;
+  incentive_inr: number;
+};
+
+export default function PayoutsClient({ earnings, repsById, leadsById, reps = [], assignments = [], allLeads = [] }: {
   earnings: Earning[];
   repsById: Record<string, Rep>;
   leadsById: Record<string, Lead>;
+  reps?: Rep[];
+  assignments?: RepAssignment[];
+  allLeads?: Lead[];
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<"all" | "unlocked" | "approved" | "locked" | "paid_out" | "reverted">("unlocked");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null); // earning id being acted on, or 'batch'
+  const [attribOpen, setAttribOpen] = useState(false);
 
   const filtered = useMemo(() => {
     if (filter === "all") return earnings;
@@ -113,7 +125,21 @@ export default function PayoutsClient({ earnings, repsById, leadsById }: {
           </h1>
           <p className="text-sm text-fg-muted mt-2">Per-lead approval. Batch buttons enabled when rows are selected.</p>
         </div>
+        <button onClick={() => setAttribOpen(true)} className="btn-forge">
+          <UserPlus className="w-4 h-4" />
+          Manually attribute earning
+        </button>
       </div>
+
+      {attribOpen && (
+        <ManualAttributeModal
+          reps={reps}
+          assignments={assignments}
+          allLeads={allLeads}
+          onClose={() => setAttribOpen(false)}
+          onCreated={() => { setAttribOpen(false); router.refresh(); }}
+        />
+      )}
 
       {/* Filter chips */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -244,5 +270,260 @@ function FilterChip({ label, count, active, onClick }: { label: string; count: n
     <button onClick={onClick} className={`chip ${active ? "chip-active" : ""}`}>
       {label}<span className="ml-1.5 opacity-70 tabular-nums">{count}</span>
     </button>
+  );
+}
+
+// ---------------------------------------------------------------- Manual Attribute Modal
+function ManualAttributeModal({ reps, assignments, allLeads, onClose, onCreated }: {
+  reps: Rep[];
+  assignments: RepAssignment[];
+  allLeads: Lead[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedRep, setSelectedRep] = useState<string>("");
+  const [editionLabel, setEditionLabel] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reps assigned to the selected lead's program (filtered list — only show reps
+  // who actually own this product). Defaults to "all reps" if no lead picked yet.
+  const eligibleReps = useMemo(() => {
+    if (!selectedLead?.program) return reps;
+    const repIds = new Set(assignments.filter(a => a.product_code === selectedLead.program).map(a => a.rep_id));
+    const matched = reps.filter(r => repIds.has(r.id));
+    return matched.length > 0 ? matched : reps;
+  }, [reps, assignments, selectedLead]);
+
+  // Auto-suggest amount when rep + program + edition combine. FC has Goa/Bali
+  // splits, so we let the admin override the edition_label if multiple matches.
+  const matchingAssignments = useMemo(() => {
+    if (!selectedLead?.program || !selectedRep) return [];
+    return assignments.filter(a => a.rep_id === selectedRep && a.product_code === selectedLead.program);
+  }, [assignments, selectedRep, selectedLead]);
+
+  // Pre-fill amount when eligible options resolve
+  useEffect(() => {
+    if (matchingAssignments.length === 1) {
+      setAmount(String(matchingAssignments[0].incentive_inr));
+      setEditionLabel(matchingAssignments[0].edition_label || "");
+    } else if (matchingAssignments.length > 1) {
+      // Multiple editions — let admin pick. Default to first.
+      setAmount(String(matchingAssignments[0].incentive_inr));
+      setEditionLabel(matchingAssignments[0].edition_label || "");
+    } else {
+      setAmount("");
+      setEditionLabel("");
+    }
+  }, [matchingAssignments]);
+
+  // Lead search — top 10 by name/email/phone match
+  const leadResults = useMemo(() => {
+    if (!search.trim()) return [];
+    const q = search.toLowerCase().trim();
+    return allLeads
+      .filter(l => {
+        return (l.name?.toLowerCase().includes(q)
+          || l.email?.toLowerCase().includes(q)
+          || l.phone?.includes(q));
+      })
+      .slice(0, 10);
+  }, [search, allLeads]);
+
+  async function submit() {
+    setError(null);
+    if (!selectedLead) { setError("Pick a lead first."); return; }
+    if (!selectedRep)  { setError("Pick a rep."); return; }
+    if (!selectedLead.program) { setError("Lead has no program — can't attribute."); return; }
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setError("Enter a valid amount."); return; }
+
+    setSubmitting(true);
+    try {
+      const r = await fetch("/api/admin/earnings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "attribute_manual",
+          lead_id: selectedLead.id,
+          rep_id: selectedRep,
+          product_code: selectedLead.program,
+          edition_label: editionLabel || null,
+          amount_inr: amt,
+          notes: notes.trim() || null,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Failed");
+      onCreated();
+    } catch (e: any) { setError(e.message); }
+    finally { setSubmitting(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="surface-card max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-2xl font-extrabold italic text-forge-black inline-flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-forge-orange-deep not-italic" />
+            Manually attribute earning
+          </h2>
+          <button onClick={onClose} className="text-fg-muted hover:text-forge-black"><X className="w-5 h-5" /></button>
+        </div>
+        <p className="text-xs text-fg-muted mb-4">
+          Use this to back-fill old conversions or attribute organic conversions to a rep. Creates a{" "}
+          <code className="text-[10px] px-1 py-0.5 bg-forge-yellow-soft text-forge-orange-deep rounded">locked</code>{" "}
+          earning that follows the same lifecycle as auto-locks (unlocks on balance fee, approvable for payout).
+        </p>
+
+        {/* Step 1: lead */}
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-fg-muted mb-1.5 font-semibold">1. Pick the lead</label>
+          {selectedLead ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-forge-yellow-soft bg-forge-yellow-pale">
+              <div className="min-w-0">
+                <div className="font-semibold text-forge-black truncate">{selectedLead.name || selectedLead.email || "—"}</div>
+                <div className="text-xs text-fg-muted truncate">
+                  {selectedLead.email || "no email"} · {selectedLead.program || "no program"} · {selectedLead.funnel_stage || "—"}
+                </div>
+              </div>
+              <button onClick={() => { setSelectedLead(null); setSelectedRep(""); setSearch(""); }} className="text-xs text-forge-orange-deep hover:text-forge-orange shrink-0">change</button>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search by name, email, or phone…"
+                  className="w-full pl-8 pr-3 py-2 text-sm border border-fg-border rounded-md bg-fg-card text-forge-black focus:outline-none focus:border-forge-yellow focus:ring-2 focus:ring-forge-yellow/20"
+                  autoFocus
+                />
+              </div>
+              {leadResults.length > 0 && (
+                <div className="mt-1 border border-fg-border rounded-md bg-fg-card max-h-[260px] overflow-y-auto">
+                  {leadResults.map(l => (
+                    <button
+                      key={l.id}
+                      onClick={() => { setSelectedLead(l); setSearch(""); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-forge-yellow-pale border-b border-fg-border/60 last:border-b-0"
+                    >
+                      <div className="font-semibold text-forge-black truncate">{l.name || l.email || l.phone || "—"}</div>
+                      <div className="text-[11px] text-fg-muted truncate">
+                        {l.email || "no email"} · {l.program || "no program"}
+                        {l.funnel_stage && <span className="ml-1 text-fg-subtle">· {l.funnel_stage}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {search && leadResults.length === 0 && (
+                <div className="mt-1 text-xs text-fg-muted px-2 py-1">No leads match.</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Step 2: rep */}
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-fg-muted mb-1.5 font-semibold">2. Pick the rep</label>
+          <select
+            value={selectedRep}
+            onChange={e => setSelectedRep(e.target.value)}
+            disabled={!selectedLead}
+            className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card text-forge-black disabled:opacity-50"
+          >
+            <option value="">{selectedLead ? "— pick a rep —" : "Pick a lead first"}</option>
+            {eligibleReps.map(r => {
+              const assignedToProgram = selectedLead?.program
+                ? assignments.some(a => a.rep_id === r.id && a.product_code === selectedLead.program)
+                : false;
+              return (
+                <option key={r.id} value={r.id}>
+                  {r.full_name || r.email}{assignedToProgram ? " ✓" : " (not assigned to this program)"}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {/* Step 3: edition (only if multiple assignments — e.g. FC Goa vs Bali) */}
+        {matchingAssignments.length > 1 && (
+          <div className="mb-4">
+            <label className="block text-[11px] uppercase tracking-[0.12em] text-fg-muted mb-1.5 font-semibold">3. Edition</label>
+            <select
+              value={editionLabel}
+              onChange={e => {
+                const m = matchingAssignments.find(a => (a.edition_label || "") === e.target.value);
+                setEditionLabel(e.target.value);
+                if (m) setAmount(String(m.incentive_inr));
+              }}
+              className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card text-forge-black"
+            >
+              {matchingAssignments.map(a => (
+                <option key={a.edition_label || "default"} value={a.edition_label || ""}>
+                  {a.edition_label || "Default"} — ₹{a.incentive_inr.toLocaleString("en-IN")}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Step 4: amount + notes */}
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-fg-muted mb-1.5 font-semibold">
+            {matchingAssignments.length > 1 ? "4. " : "3. "}Amount (INR)
+          </label>
+          <input
+            type="number"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="5000"
+            className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card text-forge-black"
+          />
+          {matchingAssignments.length === 0 && selectedRep && selectedLead?.program && (
+            <p className="text-[11px] text-rose-700 mt-1">
+              ⚠ This rep is not assigned to {selectedLead.program} — they have no preset incentive. You're entering it manually.
+            </p>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-fg-muted mb-1.5 font-semibold">Notes (optional)</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. 'Pranaush had a 30-min call with this lead in March that we forgot to log'"
+            rows={2}
+            className="w-full text-sm px-3 py-2 border border-fg-border rounded-md bg-fg-card text-forge-black resize-none"
+          />
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 px-3 py-2 mb-3 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-md border border-fg-border text-fg-muted hover:bg-fg-surface">Cancel</button>
+          <button
+            onClick={submit}
+            disabled={submitting || !selectedLead || !selectedRep || !amount}
+            className="btn-forge disabled:opacity-50"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+            Lock earning for rep
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
