@@ -146,7 +146,11 @@ export default function QueueClient({ initialLeads, bookedEmails, calendlyConnec
       if (dateRange.start || dateRange.end) {
         xs = xs.filter(l => inRange(l.first_seen, dateRange));
       }
-      return xs;
+      // Defensive: dedupe by id — if two of the parallel server fetches ever
+      // returned overlapping rows (cache contamination, race), this prevents
+      // the same lead appearing in multiple bucket lists.
+      const seen = new Set<string>();
+      return xs.filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
     },
     [initialLeads, product, dateRange]
   );
@@ -515,16 +519,30 @@ function LeadRowView({ lead, rank, bucketId, visibleCols, earning }: { lead: Lea
   const incentive = incentiveFor(lead);
   const show = (c: ColumnId) => visibleCols.has(c);
 
+  // Defensive: badge each row with the actual funnel_stage so if the user
+  // ever sees a lead show up in the wrong bucket, it's immediately obvious.
+  const stageBadge: Record<string, { label: string; cls: string }> = {
+    form_partial:   { label: "partial",   cls: "bg-fg-surface text-fg-muted" },
+    form_submitted: { label: "submitted", cls: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200" },
+    app_fee_paid:   { label: "app fee paid", cls: "bg-forge-yellow-soft text-forge-orange-deep ring-1 ring-forge-yellow" },
+    accepted:       { label: "accepted",  cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" },
+    confirmed:      { label: "confirmed", cls: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" },
+    balance_paid:   { label: "paid full", cls: "bg-emerald-200 text-emerald-900 ring-1 ring-emerald-400" },
+    lost:           { label: "lost",      cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" },
+  };
+  const sb = stageBadge[lead.funnel_stage || ""] || { label: lead.funnel_stage || "—", cls: "bg-fg-surface text-fg-muted" };
+
   return (
     <tr className={`border-b border-fg-border/70 row-hover align-top ${submittedRecent ? "bg-yellow-50/40" : ""}`}>
       <td className="py-3 pl-4 pr-2 text-xs text-fg-subtle tabular-nums">{rank}</td>
       <td className="py-3 px-2"><ScoreBadge score={lead.score} breakdown={lead.score_breakdown} /></td>
       <td className="py-3 px-2 max-w-[220px]">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Link href={`/leads/${lead.id}`} className="font-medium text-fg-text hover:text-amber-700 hover:underline truncate inline-block max-w-full">
             {lead.name || <span className="italic text-fg-subtle">No name</span>}
           </Link>
           {submittedRecent && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-yellow-500 text-white shrink-0">NEW</span>}
+          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${sb.cls}`}>{sb.label}</span>
         </div>
         {/* Show email under name only when the email column itself isn't visible */}
         {!show("email") && lead.email && (
