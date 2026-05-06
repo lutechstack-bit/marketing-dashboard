@@ -81,17 +81,22 @@ export async function POST(req: Request) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "missing supabase env" }, { status: 500 });
   }
-  const tcrmToken = process.env.TELECRM_SYNC_TOKEN;
-  const enterpriseId = process.env.TELECRM_ENTERPRISE_ID;
-  if (!tcrmToken || !enterpriseId) {
-    return NextResponse.json({ error: "missing TELECRM_SYNC_TOKEN or TELECRM_ENTERPRISE_ID" }, { status: 500 });
-  }
-
   const body = await req.json().catch(() => ({})) as {
     since_ms?: number;
     max_pages?: number;
     dry_run?: boolean;
+    // First-run override: when env vars aren't set yet, pass the TeleCRM
+    // credentials in the request body. Bootstrap-token-protected, so this
+    // is safe for one-off runs from a CLI / cron until Vercel env is wired.
+    telecrm_token?: string;
+    telecrm_enterprise_id?: string;
   };
+
+  const tcrmToken = process.env.TELECRM_SYNC_TOKEN || body.telecrm_token;
+  const enterpriseId = process.env.TELECRM_ENTERPRISE_ID || body.telecrm_enterprise_id;
+  if (!tcrmToken || !enterpriseId) {
+    return NextResponse.json({ error: "missing TELECRM_SYNC_TOKEN or TELECRM_ENTERPRISE_ID (set env or pass telecrm_token + telecrm_enterprise_id in body)" }, { status: 500 });
+  }
   const sinceMs = body.since_ms || 0;
   const maxPages = body.max_pages || 500;
   const dryRun = !!body.dry_run;
