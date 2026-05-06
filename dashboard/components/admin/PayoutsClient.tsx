@@ -300,6 +300,15 @@ function ManualAttributeModal({ reps, assignments, onClose, onCreated }: {
   const [selectedRep, setSelectedRep] = useState<string>("");
   const [editionLabel, setEditionLabel] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
+  // Conversion date (YYYY-MM-DD). Default to today; admin can backdate
+  // for old conversions so the earnings ledger reflects reality.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [conversionDate, setConversionDate] = useState<string>(todayIso);
+  // Initial status of the manually-created earning. Defaults to "unlocked"
+  // because most manual attributions are for conversions where the founder
+  // already has confirmation that the rep earned the incentive — not the
+  // webhook-driven "wait for balance" lock-in.
+  const [initialStatus, setInitialStatus] = useState<"locked" | "unlocked" | "approved">("unlocked");
 
   const [notes, setNotes] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -369,6 +378,13 @@ function ManualAttributeModal({ reps, assignments, onClose, onCreated }: {
       body.product_code = selectedLead.program;
       body.edition_label = editionLabel || null;
       body.amount_inr = amt;
+      // Server expects ISO. Convert YYYY-MM-DD to noon-local UTC so the
+      // date label in the ledger matches what the admin typed (no TZ drift).
+      if (conversionDate) {
+        const dt = new Date(`${conversionDate}T12:00:00`);
+        body.conversion_date = dt.toISOString();
+      }
+      body.initial_status = initialStatus;
     }
 
     setSubmitting(true);
@@ -552,6 +568,37 @@ function ManualAttributeModal({ reps, assignments, onClose, onCreated }: {
                       ⚠ This rep isn't assigned to {selectedLead.program} — no preset incentive, enter manually.
                     </p>
                   )}
+
+                  {/* Conversion date — defaults to today, admins backdate for old converts */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.1em] text-fg-muted mb-1 font-semibold">Conversion date</label>
+                      <input
+                        type="date"
+                        value={conversionDate}
+                        onChange={e => setConversionDate(e.target.value)}
+                        max={todayIso}
+                        className="w-full text-sm px-2 py-1.5 border border-fg-border rounded-md bg-fg-card text-forge-black"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.1em] text-fg-muted mb-1 font-semibold">Status</label>
+                      <select
+                        value={initialStatus}
+                        onChange={e => setInitialStatus(e.target.value as "locked" | "unlocked" | "approved")}
+                        className="w-full text-sm px-2 py-1.5 border border-fg-border rounded-md bg-fg-card text-forge-black"
+                      >
+                        <option value="locked">🔒 Locked — awaiting balance</option>
+                        <option value="unlocked">✅ Unlocked — earned, awaiting approval</option>
+                        <option value="approved">✓ Approved — ready to pay out</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-fg-muted">
+                    {initialStatus === "locked"   && "Earning is locked. It'll unlock automatically when the lead pays balance."}
+                    {initialStatus === "unlocked" && "Earning is unlocked. Rep has earned it; admin must approve before pay-out."}
+                    {initialStatus === "approved" && "Earning is approved. Ready for the next pay-out batch."}
+                  </p>
                 </div>
               )}
             </div>

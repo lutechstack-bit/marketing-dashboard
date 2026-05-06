@@ -65,7 +65,8 @@ export async function POST(req: Request) {
   //   2. Set the lead's funnel_stage explicitly
   // Both are independent and optional, but at least one must be provided.
   if (action === "attribute_manual" || action === "update_lead") {
-    const { lead_id, rep_id, product_code, edition_label, amount_inr, notes, set_stage } = body || {};
+    const { lead_id, rep_id, product_code, edition_label, amount_inr, notes, set_stage,
+            conversion_date, initial_status } = body || {};
     if (!lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
 
     const VALID_STAGES = [
@@ -86,6 +87,22 @@ export async function POST(req: Request) {
       if (!Number.isFinite(amt) || amt <= 0) {
         return NextResponse.json({ error: "amount_inr must be > 0" }, { status: 400 });
       }
+      // Validate optional date — must parse and be in the past or today.
+      let convDate: string | undefined;
+      if (conversion_date) {
+        const parsed = new Date(conversion_date);
+        if (isNaN(parsed.getTime())) {
+          return NextResponse.json({ error: "conversion_date is invalid" }, { status: 400 });
+        }
+        if (parsed.getTime() > Date.now() + 86400_000) {
+          return NextResponse.json({ error: "conversion_date can't be in the future" }, { status: 400 });
+        }
+        convDate = parsed.toISOString();
+      }
+      // Validate optional status
+      const validStatuses = ["locked", "unlocked", "approved"];
+      const status = initial_status && validStatuses.includes(initial_status) ? initial_status : undefined;
+
       earning = await manualLockEarning({
         lead_id,
         rep_id,
@@ -94,6 +111,8 @@ export async function POST(req: Request) {
         amount_inr: amt,
         attributed_by: adminId,
         notes: notes || null,
+        conversion_date: convDate,
+        initial_status: status as any,
       });
       if (!earning) return NextResponse.json({ error: "failed to create earning" }, { status: 500 });
     }

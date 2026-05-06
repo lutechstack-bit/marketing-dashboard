@@ -204,6 +204,14 @@ export async function manualLockEarning(opts: {
   amount_inr: number;
   attributed_by: string; // admin/founder rep_id
   notes?: string;
+  /** When did this conversion actually happen? Defaults to now.
+   *  Used for backfilling old conversions so the timestamp on the earnings
+   *  ledger reflects reality, not the moment the admin clicked the button. */
+  conversion_date?: string;
+  /** Initial status for the earning. Defaults to "locked" (rep earned it,
+   *  awaiting balance). Admin can override to "unlocked" if balance has
+   *  already been collected, or "approved" if it's already approved. */
+  initial_status?: "locked" | "unlocked" | "approved";
 }): Promise<EarningRow | null> {
   const dedupKey = `manual_${opts.lead_id}_${opts.rep_id}`;
   const { data: existing } = await supabase
@@ -213,20 +221,33 @@ export async function manualLockEarning(opts: {
     .limit(1);
   if (existing && existing.length > 0) return existing[0] as EarningRow;
 
+  const conversionTs = opts.conversion_date || new Date().toISOString();
+  const status = opts.initial_status || "locked";
   const now = new Date().toISOString();
+
+  // Build the row with appropriate timestamps for the chosen initial status.
+  // If admin sets "unlocked", we record locked_at = unlocked_at = conversion date.
+  // If "approved", same plus approved_at = now.
+  const row: any = {
+    lead_id: opts.lead_id,
+    rep_id: opts.rep_id,
+    product_code: opts.product_code,
+    edition_label: opts.edition_label,
+    amount_inr: opts.amount_inr,
+    status,
+    locked_at: conversionTs,
+    trigger_slot_payment_id: dedupKey,
+    notes: opts.notes ? `Manual: ${opts.notes}` : "Manual attribution by admin",
+  };
+  if (status === "unlocked" || status === "approved") row.unlocked_at = conversionTs;
+  if (status === "approved") {
+    row.approved_at = now;
+    row.approved_by = opts.attributed_by;
+  }
+
   const { data, error } = await supabase
     .from("incentive_earnings")
-    .insert({
-      lead_id: opts.lead_id,
-      rep_id: opts.rep_id,
-      product_code: opts.product_code,
-      edition_label: opts.edition_label,
-      amount_inr: opts.amount_inr,
-      status: "locked",
-      locked_at: now,
-      trigger_slot_payment_id: dedupKey,
-      notes: opts.notes ? `Manual: ${opts.notes}` : "Manual attribution by admin",
-    })
+    .insert(row)
     .select()
     .single();
   if (error || !data) {
@@ -234,10 +255,15 @@ export async function manualLockEarning(opts: {
     return null;
   }
   await logAudit({
-    earning_id: data.id, from_status: null, to_status: "locked",
+    earning_id: data.id, from_status: null, to_status: status,
     changed_by: opts.attributed_by,
     reason: `Manual attribution by admin${opts.notes ? `: ${opts.notes}` : ""}`,
-    payload: { manual: true, attributed_by: opts.attributed_by },
+    payload: {
+      manual: true,
+      attributed_by: opts.attributed_by,
+      conversion_date: conversionTs,
+      initial_status: status,
+    },
   });
 
   // ALSO bump the lead's funnel_stage so they leave the Abandoned bucket.
