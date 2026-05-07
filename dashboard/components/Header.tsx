@@ -15,8 +15,7 @@ const SALES_NAV = [
 ];
 
 const FOUNDER_NAV = [
-  { href: "/",            label: "Overview",     icon: LayoutDashboard },
-  { href: "/insights",    label: "Insights",     icon: Sparkles },
+  { href: "/",            label: "Dashboard",    icon: LayoutDashboard },
   { href: "/queue",       label: "Queue",        icon: Phone },
   { href: "/leaderboard", label: "Leaderboard",  icon: Trophy },
   { href: "/leads",       label: "Leads",        icon: Users },

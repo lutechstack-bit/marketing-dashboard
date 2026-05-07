@@ -125,30 +125,41 @@ async function fetchProgramScorecardsImpl(opts: {
   );
   const allLeads = leadResults.flatMap(r => r.data || []);
 
+  // Applications counted by lead-creation date — when the form was filled.
+  // (app_fees_paid + converts use payment-date counts from the sheet below.)
   for (const l of allLeads as any[]) {
     const ym = ymOf(l.first_seen) || ymOf(l.created_at);
     if (!ym) continue;
     if (!cells.has(`${l.program}|${ym}`)) continue;
     bump(l.program, ym, "applications", 1);
-    if (PROGRESSED_STAGES.has(l.funnel_stage)) bump(l.program, ym, "app_fees_paid", 1);
-    if (CONVERTED_STAGES.has(l.funnel_stage))  bump(l.program, ym, "converts",      1);
   }
 
-  // ---- Revenue — Revenue Tracker sheet (source of truth) ----
-  // The Revenue Tracker's "Transaction Log" tab has every transaction
-  // tagged with Product + Month + Payment Type + Status. We aggregate
-  // there instead of trying to reconstruct from Razorpay payments (which
-  // had ~86% NULL-program orphans). This is the founder-maintained ground
-  // truth for revenue, refreshed every 60s so it tracks real-time.
+  // ---- Revenue + payment-date counts from the Revenue Tracker sheet ----
+  // The Transaction Log is the founder-maintained source of truth for
+  //   - revenue (₹) per program × month, broken out by payment type
+  //   - distinct-student counts per payment type (app fees, confirmations,
+  //     balances paid in that month)
+  //
+  // We use payment-date semantics here (matching the Revenue Tracker UI):
+  //   - app_fees_paid = distinct students who paid Application Fee in month
+  //   - converts      = distinct students who paid Confirmation Fee in month
+  //                     (= enrolled into the cohort) OR Balance (full payment)
+  //   - revenue       = sum of amounts per type
   const revenueRows = await fetchRevenueByProgramMonth().catch(() => null);
   if (revenueRows) {
     for (const r of revenueRows) {
       if (!cells.has(`${r.program}|${r.ym}`)) continue;
       bump(r.program, r.ym, "app_fee_revenue_inr", r.app_fee_revenue_inr);
-      // Confirmation + Balance both count as "balance" revenue (anything
-      // beyond app fee). They're separated in the sheet but combined in
-      // the per-program scorecard.
+      // Confirmation + Balance both count as revenue beyond the app fee.
       bump(r.program, r.ym, "balance_revenue_inr", r.confirmation_revenue_inr + r.balance_revenue_inr);
+      // Counts (payment-date semantics) — these REPLACE the previous
+      // funnel-stage-derived counts since the user wants payment-month view.
+      bump(r.program, r.ym, "app_fees_paid", r.app_fee_student_count);
+      // A "convert" = student who paid confirmation OR balance in the month.
+      // Use Math.max so a student paying both Conf+Balance in same month
+      // doesn't double-count.
+      const convs = Math.max(r.confirmation_student_count, r.balance_student_count);
+      bump(r.program, r.ym, "converts", convs);
     }
   }
 
@@ -178,10 +189,10 @@ async function fetchProgramScorecardsImpl(opts: {
   return out;
 }
 
-// Cache 5 min — short enough to reflect sheet edits within a few minutes,
-// long enough to avoid hammering Sheets/Meta APIs.
+// Cache 60s — matches Revenue Tracker cache so a sheet edit propagates
+// to the dashboard within a minute.
 export const fetchProgramScorecards = unstable_cache(
   async (monthsBack: number = 6) => fetchProgramScorecardsImpl({ monthsBack }),
-  ["program-scorecards-v3"],
-  { revalidate: 300, tags: ["leads", "meta-ads", "revenue-tracker"] },
+  ["program-scorecards-v4-paymentdate"],
+  { revalidate: 60, tags: ["leads", "meta-ads", "revenue-tracker"] },
 );

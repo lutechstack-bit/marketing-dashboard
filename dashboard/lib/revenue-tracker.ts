@@ -278,6 +278,12 @@ export type ProgramMonthRevenue = {
   confirmation_revenue_inr: number; // "Confirmation Fee"
   balance_revenue_inr: number;     // "Balance" / "Full" / EMI installments
   total_revenue_inr: number;
+  // Counts of distinct STUDENTS per payment type in the month — used to
+  // populate "app fees paid" / "converts" with payment-date semantics.
+  app_fee_student_count: number;
+  confirmation_student_count: number;
+  balance_student_count: number;
+  // Total transaction rows in month (for diagnostics)
   txn_count: number;
 };
 
@@ -310,18 +316,26 @@ async function fetchRevenueByProgramMonthImpl(): Promise<ProgramMonthRevenue[]> 
   if (tl.length < 2) return [];
 
   const header = (tl[0] || []).map(h => String(h).toLowerCase().trim());
-  const colMonth   = header.findIndex(h => /^month$/.test(h));
-  const colProduct = header.findIndex(h => /^\s*product\s*$/.test(h));
-  const colPayType = header.findIndex(h => /payment\s*type/.test(h));
-  const colAmount  = header.findIndex(h => /amount/.test(h));
-  const colStatus  = header.findIndex(h => /txn\s*status|status/.test(h));
+  const colMonth     = header.findIndex(h => /^month$/.test(h));
+  const colStudentId = header.findIndex(h => /^student\s*id$/.test(h));
+  const colProduct   = header.findIndex(h => /^\s*product\s*$/.test(h));
+  const colPayType   = header.findIndex(h => /payment\s*type/.test(h));
+  const colAmount    = header.findIndex(h => /amount/.test(h));
+  const colStatus    = header.findIndex(h => /txn\s*status|status/.test(h));
 
   if (colMonth < 0 || colProduct < 0 || colPayType < 0 || colAmount < 0 || colStatus < 0) {
     return [];
   }
 
-  // Aggregate by (program, ym)
-  const cells = new Map<string, ProgramMonthRevenue>();
+  // Aggregate by (program, ym). Track distinct students per payment-type
+  // bucket so "9 app fees paid in May" really counts 9 unique students who
+  // paid an app fee that month (not 9 transactions for the same student).
+  type Cell = ProgramMonthRevenue & {
+    _app_fee_students: Set<string>;
+    _confirmation_students: Set<string>;
+    _balance_students: Set<string>;
+  };
+  const cells = new Map<string, Cell>();
   const VALID_PROGS = new Set(["FFM", "FW", "FC", "FAI", "BFP", "VE", "L3C"]);
   for (let i = 1; i < tl.length; i++) {
     const row = tl[i] || [];
@@ -334,28 +348,48 @@ async function fetchRevenueByProgramMonthImpl(): Promise<ProgramMonthRevenue[]> 
     const amt = num(row[colAmount]);
     if (!amt) continue;
     const ptype = String(row[colPayType] || "").toLowerCase();
+    const studentId = colStudentId >= 0 ? String(row[colStudentId] || "").trim() : "";
+    // Fall back to txn id if student id is empty so each row counts as 1 unique
+    const studentKey = studentId || `__txn_${i}`;
     const key = `${product}|${monthInfo.ym}`;
     if (!cells.has(key)) {
       cells.set(key, {
         program: product, ym: monthInfo.ym, year: monthInfo.year, month: monthInfo.month,
         app_fee_revenue_inr: 0, confirmation_revenue_inr: 0, balance_revenue_inr: 0,
-        total_revenue_inr: 0, txn_count: 0,
+        total_revenue_inr: 0,
+        app_fee_student_count: 0, confirmation_student_count: 0, balance_student_count: 0,
+        txn_count: 0,
+        _app_fee_students: new Set(), _confirmation_students: new Set(), _balance_students: new Set(),
       });
     }
     const c = cells.get(key)!;
     c.txn_count++;
     if (/application\s*fee|app\s*fee/i.test(ptype)) {
       c.app_fee_revenue_inr += amt;
+      c._app_fee_students.add(studentKey);
     } else if (/confirmation/i.test(ptype)) {
       c.confirmation_revenue_inr += amt;
+      c._confirmation_students.add(studentKey);
     } else {
       c.balance_revenue_inr += amt;
+      c._balance_students.add(studentKey);
     }
     c.total_revenue_inr += amt;
   }
-  return Array.from(cells.values()).sort((a, b) =>
-    a.program.localeCompare(b.program) || a.ym.localeCompare(b.ym)
-  );
+  // Materialize counts and strip working sets
+  return Array.from(cells.values())
+    .map(c => ({
+      program: c.program, ym: c.ym, year: c.year, month: c.month,
+      app_fee_revenue_inr: c.app_fee_revenue_inr,
+      confirmation_revenue_inr: c.confirmation_revenue_inr,
+      balance_revenue_inr: c.balance_revenue_inr,
+      total_revenue_inr: c.total_revenue_inr,
+      app_fee_student_count: c._app_fee_students.size,
+      confirmation_student_count: c._confirmation_students.size,
+      balance_student_count: c._balance_students.size,
+      txn_count: c.txn_count,
+    }))
+    .sort((a, b) => a.program.localeCompare(b.program) || a.ym.localeCompare(b.ym));
 }
 
 /** Cached 60s — same near-real-time policy as fetchRevenueMetrics. */
