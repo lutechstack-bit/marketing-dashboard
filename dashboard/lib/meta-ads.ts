@@ -160,13 +160,28 @@ export type MetaAdRow = {
   purchases: number;
 };
 
+/**
+ * Read a single canonical conversion count from Meta's actions array.
+ *
+ * Meta reports the SAME conversion under multiple action_type entries
+ * (e.g. a single lead shows up as both `lead` and
+ * `offsite_conversion.fb_pixel_lead` and `onsite_web_lead` simultaneously).
+ * Summing them double-or-triple-counts. We try the names in priority order
+ * and return the FIRST match — that's the canonical count.
+ *
+ * Verified empirically against Level Up's account: lead/onsite_web_lead/
+ * offsite_conversion.fb_pixel_lead all returned 115, not 345.
+ */
 function actionsValue(actions: any[] | undefined, names: string[]): number {
   if (!actions) return 0;
-  let total = 0;
-  for (const a of actions) {
-    if (names.includes(a.action_type)) total += parseFloat(a.value || "0");
+  for (const name of names) {
+    const a = actions.find(x => x.action_type === name);
+    if (a) {
+      const v = parseFloat(a.value || "0");
+      if (Number.isFinite(v)) return v;
+    }
   }
-  return total;
+  return 0;
 }
 
 /**
